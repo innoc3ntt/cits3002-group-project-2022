@@ -1,4 +1,6 @@
-import re, subprocess
+import re, subprocess, logging
+
+logging.basicConfig(filename="output.log", filemode="w", level=logging.DEBUG)
 
 
 def parse_file(filename):
@@ -8,6 +10,9 @@ def parse_file(filename):
     with open(filename) as file:
         for line in file:
             chars = line.split()
+
+            if line.startswith("#"):
+                continue
 
             if "=" in chars:
                 # If line is a global variable
@@ -46,10 +51,18 @@ def parse_file(filename):
 
 
 def main():
+    logging.info("Parsing rakefile")
     configs, actions = parse_file("rakefile")
-    print(actions)
-    action1 = actions[0][1][0]
-    subprocess.run(action1)
+    logging.info("Rakefile parsed")
+
+    for actionset in actions:
+        for action in actionset[1]:
+            logging.info("running %s", action)
+            try:
+                process = subprocess.run(action, check=True, capture_output=True)
+                logging.info(process.stdout)
+            except:
+                logging.error(process.stderr)
 
 
 if __name__ == "__main__":
