@@ -52,7 +52,7 @@ def parse_file(filename):
 
 def main():
     logging.info("Parsing rakefile")
-    configs, actions = parse_file("rakefile")
+    configs, actions = parse_file("rakefile1")
     logging.info("Rakefile parsed")
 
     for actionset in actions:
