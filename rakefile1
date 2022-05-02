@@ -1,3 +1,9 @@
 actionset1:
     echo starting actionset1
     echo action2!
+
+actionset2:
+    echo starting actionset2
+
+actionset3:
+    echo starting actionset3

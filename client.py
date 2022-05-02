@@ -1,4 +1,4 @@
-import re, subprocess, logging
+import re, subprocess, logging, socket
 
 logging.basicConfig(filename="output.log", filemode="w", level=logging.DEBUG)
 
@@ -55,14 +55,25 @@ def main():
     configs, actions = parse_file("rakefile1")
     logging.info("Rakefile parsed")
 
+    HOST = "localhost"
+    PORT = 8000
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.connect((HOST, PORT))
+        s.sendall(b"Hello, world")
+        data = s.recv(1024)
+
+    print(f"Received {data!r}")
+
     for actionset in actions:
         for action in actionset[1]:
             logging.info("running %s", action)
             try:
                 process = subprocess.run(action, check=True, capture_output=True)
                 logging.info(process.stdout)
-            except:
-                logging.error(process.stderr)
+            except subprocess.CalledProcessError as err:
+                logging.error(err)
+                raise RuntimeError(process.stderr)
 
 
 if __name__ == "__main__":
