@@ -1,4 +1,4 @@
-import re, subprocess, logging, socket
+import re, subprocess, logging, socket, pickle
 
 logging.basicConfig(filename="output.log", filemode="w", level=logging.DEBUG)
 
@@ -60,10 +60,13 @@ def main():
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.connect((HOST, PORT))
-        s.sendall(b"Hello, world")
-        data = s.recv(1024)
+        # trying to send action set to server, not sure if required but here if needed
+        data_string = pickle.dumps(actions)
+        s.send(data_string)
+        data = s.recv(4096)
+        data_arr = pickle.loads(data)
 
-    print(f"Received {data!r}")
+    print(f"Received {data_arr!r}")
 
     for actionset in actions:
         for action in actionset[1]:

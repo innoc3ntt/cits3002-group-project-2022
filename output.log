@@ -1,2 +1,10 @@
 INFO:root:Parsing rakefile
 INFO:root:Rakefile parsed
+INFO:root:running ['echo', 'starting', 'actionset1']
+INFO:root:b'starting actionset1\n'
+INFO:root:running ['echo', 'action2!']
+INFO:root:b'action2!\n'
+INFO:root:running ['echo', 'starting', 'actionset2']
+INFO:root:b'starting actionset2\n'
+INFO:root:running ['echo', 'starting', 'actionset3']
+INFO:root:b'starting actionset3\n'

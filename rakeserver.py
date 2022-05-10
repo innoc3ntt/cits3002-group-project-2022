@@ -2,6 +2,7 @@ import sys
 import socket
 import selectors
 import types
+import pickle
 
 HOST = "localhost"
 PORT = 8000
@@ -17,8 +18,9 @@ def accept_wrapper(sock):
 def service_connection(key, mask):
     sock = key.fileobj
     data = key.data
+    # print(data)
     if mask & selectors.EVENT_READ:
-        recv_data = sock.recv(1024)  # Should be ready to read
+        recv_data = sock.recv(4096)  # Should be ready to read
         if recv_data:
             data.outb += recv_data
         else:
@@ -26,10 +28,13 @@ def service_connection(key, mask):
             sel.unregister(sock)
             sock.close()
     if mask & selectors.EVENT_WRITE:
+        # This is where the data received by the server can be handled
         if data.outb:
-            print(f"Echoing {data.outb!r} to {data.addr}")
+            my_data = pickle.loads(data.outb)
+            print(f"Echoing {my_data!r} to {data.addr}")
             sent = sock.send(data.outb)  # Should be ready to write
             data.outb = data.outb[sent:]
+
 
 sel = selectors.DefaultSelector()
 
