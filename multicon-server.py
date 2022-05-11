@@ -45,7 +45,8 @@ def service_connection(key, mask):
 host, port = ("127.0.0.1", 8000)
 
 lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-lsock.bind((host, port))
+# Avoid bind() exception: OSError: [Errno 48] Address already in use
+lsock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 lsock.listen()
 print(f"Listening on {(host, port)}")
 lsock.setblocking(False)
