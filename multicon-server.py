@@ -37,11 +37,13 @@ def service_connection(key, mask):
             data.outb = data.outb[sent:]
 
 
-if len(sys.argv) != 3:
-    print(f"Usage: {sys.argv[0]} <host> <port>")
-    sys.exit(1)
+# if len(sys.argv) != 3:
+#     print(f"Usage: {sys.argv[0]} <host> <port>")
+#     sys.exit(1)
 
-host, port = sys.argv[1], int(sys.argv[2])
+# host, port = sys.argv[1], int(sys.argv[2])
+host, port = ("127.0.0.1", 8000)
+
 lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 lsock.bind((host, port))
 lsock.listen()

@@ -4,7 +4,7 @@ import selectors
 import types
 
 HOST = "localhost"
-PORT = 8001
+PORT = 8000
 
 sel = selectors.DefaultSelector()
 messages = [b"Message 1 from client.", b"Message 2 from client."]
