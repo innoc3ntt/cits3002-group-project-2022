@@ -81,3 +81,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def create_file(bytes, name):
+    # convenience function to create a file to send
+    pass
