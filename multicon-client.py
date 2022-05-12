@@ -4,7 +4,14 @@ import selectors
 import types
 
 sel = selectors.DefaultSelector()
-messages = [b"Message 1 from client.", b"Message 2 from client."]
+# messages = [b"Message 1 from client.", b"Message 2 from client."]
+messages = []
+
+file = open("func1.c")
+file_data = file.read().encode("utf-8")
+messages.append(file_data)
+
+print(file_data)
 
 
 def start_connections(host, port, num_conns):

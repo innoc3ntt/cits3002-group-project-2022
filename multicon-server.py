@@ -8,6 +8,8 @@ import random
 sel = selectors.DefaultSelector()
 random.seed(time.time())
 
+file = open("test.c", "wb")
+
 
 def accept_wrapper(sock):
     conn, addr = sock.accept()  # Should be ready to read
@@ -29,10 +31,14 @@ def service_connection(key, mask):
             print(f"Closing connection to {data.addr}")
             sel.unregister(sock)
             sock.close()
+            # file.write(data.outb)
+            # file.close()
     if mask & selectors.EVENT_WRITE:
         if data.outb:
             time.sleep(random.randint(0, 5))
             print(f"Echoing {data.outb!r} to {data.addr}")
+            file.write(data.outb)
+            file.close()
             sent = sock.send(data.outb)  # Should be ready to write
             data.outb = data.outb[sent:]
 
