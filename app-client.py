@@ -74,20 +74,18 @@ results = []
 
 
 # first query
-def query():
+def query(addresses):
     """
     Run for each action in an actionset to query all the connected servers.
     will return the minimum bid server and it's ip address
 
     """
 
-    host = "127.0.0.1"
     query = create_request("query")
 
-    # pretend there are 3 actions
-
-    for port in ports:
+    for address in addresses:
         # for each host!
+        host, port = address
         start_connection(host, port, query)
 
     results = []
@@ -213,11 +211,11 @@ def main():
     host = "127.0.0.1"
     port = 65432
 
-    # for action in range(3):
-    #     minimums.append(query())
+    port2 = 65431
 
-    # for action in minimums:
-    #     remote(action)
+    addresses = [(host, port), (host, port2)]
+
+    query(addresses)
     send_file(host, port, "test.c")
     cc(host, port, "test.c")
 

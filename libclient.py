@@ -85,6 +85,12 @@ class Message:
         content = self.response
         print(f"Got response: {content!r}")
 
+    def _process_response_command(self):
+        content = self.response
+
+        with open("from_server", "wb") as f:
+            f.write(content)
+
     def process_events(self, mask):
         if mask & selectors.EVENT_READ:
             self.read()
@@ -188,6 +194,13 @@ class Message:
             self.response = self._json_decode(data, encoding)
             print(f"Received response {self.response!r} from {self.addr}")
             self._process_response_json_content()
+        elif self.jsonheader["content-type"] == "command":
+            self.response = data
+            print(
+                f"Received {self.jsonheader['content-type']} "
+                f"response from {self.addr}"
+            )
+            self._process_response_command()
         else:
             # Binary or unknown content-type
             self.response = data

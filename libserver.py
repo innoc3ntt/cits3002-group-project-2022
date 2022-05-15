@@ -57,7 +57,7 @@ class Message:
 
     def _write(self):
         if self._send_buffer:
-            print(f"Sending {self._send_buffer!r} to {self.addr}")
+            # print(f"Sending {self._send_buffer!r} to {self.addr}")
             try:
                 # Should be ready to write
                 sent = self.sock.send(self._send_buffer)
@@ -117,10 +117,38 @@ class Message:
         }
         return response
 
-    def _create_response_content(self, data):
+    def _create_response_command(self):
+        shell = self.request.get("shell")
+        value = self.request.get("value")
+        req_file = self.request.get("req_file")
+        cmd = [shell]
+        cmd.extend(value)
+        cmd.append(req_file)
+
+        print("cmd is")
+
+        print(cmd)
+        process = subprocess.run(cmd, check=True, capture_output=True)
+        content = {
+            "output": process.stdout.decode("utf-8"),
+            "exit_status": process.returncode,
+        }
+
+        # get newest file, send it back
+        list_of_files = glob.glob(
+            "./*"
+        )  # * means all if need specific format then *.csv
+        latest_file = max(list_of_files, key=os.path.getctime)
+
+        print("Latest file is:")
+        print(latest_file)
+
+        with open(latest_file, "rb") as f:
+            data = f.read()
+
         response = {
             "content_bytes": data,
-            "content_type": "binary/custom-server-binary-type",
+            "content_type": "command",
             "content_encoding": "binary",
         }
         return response
@@ -210,35 +238,9 @@ class Message:
             # if a command is given
             # encoding = self.jsonheader["content-encoding"]
             encoding = "utf-8"
-            # print("data is ")
-            # print(data)
             self.request = self._json_decode(data, encoding)
 
-            print(f"Received request {self.request!r} from {self.addr}")
-            shell = self.request.get("shell")
-            value = self.request.get("value")
-            req_file = self.request.get("req_file")
-            cmd = [shell]
-            cmd.extend(value)
-            cmd.append(req_file)
-
-            print("cmd is")
-
-            print(cmd)
-            process = subprocess.run(cmd, check=True, capture_output=True)
-            content = {
-                "output": process.stdout.decode("utf-8"),
-                "exit_status": process.returncode,
-            }
-
-            # get newest file, send it back
-            list_of_files = glob.glob(
-                "./*"
-            )  # * means all if need specific format then *.csv
-            latest_file = max(list_of_files, key=os.path.getctime)
-
-            with open(latest_file, "rb") as f:
-                data = f.read()
+        # print(f"Received request {self.request!r} from {self.addr}")
 
         # Set selector to listen for write events, we're done reading.
         self._set_selector_events_mask("w")
@@ -252,6 +254,7 @@ class Message:
         elif self.jsonheader["content-type"] == "command":
             # if a cc command is given
             response = self._create_response_command()
+            print("command run")
 
         message = self._create_message(**response)
         self.response_created = True
