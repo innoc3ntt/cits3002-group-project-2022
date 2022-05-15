@@ -1,2 +1,4 @@
 fakerakes
 *.log
+__pycache__
+.vscode
