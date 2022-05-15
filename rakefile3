@@ -1,0 +1,6 @@
+HOSTS = 127.0.0.1
+PORT = 8000
+
+actionset1: 
+    remote-cc test.c
+        requires test.c
