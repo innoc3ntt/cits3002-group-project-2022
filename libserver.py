@@ -101,7 +101,10 @@ class Message:
             # pass in a remote execution
             shell = self.request.get("shell")
             other = self.request.get("value")
-            process = subprocess.run([shell, other], check=True, capture_output=True)
+            running_list = [shell]
+            running_list.extend(other)
+            print(running_list)
+            process = subprocess.run(running_list, check=True, capture_output=True)
             content = {
                 "output": process.stdout.decode("utf-8"),
                 "exit_status": process.returncode,
@@ -145,7 +148,6 @@ class Message:
                 self.process_request()
 
     def write(self):
-        # FIXME: uncomment on more testing! time.sleep(random.randint(0, 5))
         if self.request:
             if not self.response_created:
                 self.create_response()
@@ -204,6 +206,9 @@ class Message:
                 f"Received {self.jsonheader['content-type']} "
                 f"request from {self.addr}"
             )
+            with open("testfile", "wb") as f:
+                f.write(data)
+
         # Set selector to listen for write events, we're done reading.
         self._set_selector_events_mask("w")
 

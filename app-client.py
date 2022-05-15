@@ -17,7 +17,7 @@ import tqdm
 sel = selectors.DefaultSelector()
 
 
-def create_request(action, value=None, subp="echo"):
+def create_request(action, value=None, shell="echo"):
     if action == "search":
         return dict(
             type="text/json",
@@ -34,7 +34,7 @@ def create_request(action, value=None, subp="echo"):
         return dict(
             type="text/json",
             encoding="utf-8",
-            content=dict(action=action, shell=subp, value=value),
+            content=dict(action=action, shell=shell, value=value),
         )
     # elif action == "file":
     #     return dict(type="binary/custom-server-binary-type", encoding="binary", content=)
@@ -42,7 +42,7 @@ def create_request(action, value=None, subp="echo"):
         return dict(
             type="binary/custom-client-binary-type",
             encoding="binary",
-            content=bytes(action + value, encoding="utf-8"),
+            content=value,
         )
 
 
@@ -156,63 +156,81 @@ def remote(minCost):
     #     sel.close()
 
 
-# working on sendfile
-BUFFER_SIZE = 1024
-SEPARATOR = "<SEPARATOR>"
+def sendFile():
+    host = "127.0.0.1"
 
+    file = open("test.c", "rb")
+    bytes_read = file.read()
+    print("LENGHT IS :   " + str(len(bytes_read)))
+    file_send = create_request("file", bytes_read)
 
-def send_file(filename, host, port):
-    # get the file size
-    filesize = os.path.getsize(filename)
-    # create the client socket
-    s = socket.socket()
-    print(f"[+] Connecting to {host}:{port}")
-    s.connect((host, port))
-    print("[+] Connected.")
+    # pretend there are 3 actions
+    start_connection(host, 65432, file_send)
 
-    # send the filename and filesize
-    s.send(f"{filename}{SEPARATOR}{filesize}".encode())
-
-    # start sending the file
-    progress = tqdm.tqdm(
-        range(filesize),
-        f"Sending {filename}",
-        unit="B",
-        unit_scale=True,
-        unit_divisor=1024,
-    )
-    with open(filename, "rb") as f:
+    try:
         while True:
-            # read the bytes from the file
-            bytes_read = f.read(BUFFER_SIZE)
-            if not bytes_read:
-                # file transmitting is done
+            events = sel.select(timeout=1)
+            for key, mask in events:
+                message = key.data
+                try:
+                    message.process_events(mask)
+                except Exception:
+                    print(
+                        f"Main: Error: Exception for {message.addr}:\n"
+                        f"{traceback.format_exc()}"
+                    )
+                    message.close()
+            # Check for a socket being monitored to continue.
+            if not sel.get_map():
                 break
-            # we use sendall to assure transimission in
-            # busy networks
-            s.sendall(bytes_read)
-            # update the progress bar
-            progress.update(len(bytes_read))
-
-    # close the socket
-    s.close()
-
-
-def both_commands():
-    minCost = query()
-    remote(minCost)
+    except KeyboardInterrupt:
+        print("Caught keyboard interrupt, exiting")
+    # finally:
+    #     sel.close()
 
 
 def main():
     # both_commands()
     # subprocess.run(both_commands)
-    minimums = []
+    # minimums = []
 
-    for action in range(3):
-        minimums.append(query())
+    # for action in range(3):
+    #     minimums.append(query())
 
-    for action in minimums:
-        remote(action)
+    # for action in minimums:
+    #     remote(action)
+    sendFile()
+    c_req = create_request("remote", shell="cc", value=["-o", "output", "test.c"])
+
+    start_connection("127.0.0.1", 65432, c_req)
+    try:
+        while True:
+            events = sel.select(timeout=1)
+            for key, mask in events:
+                message = key.data
+                try:
+                    message.process_events(mask)
+                    # print(key.data)
+                    if mask & selectors.EVENT_READ:
+                        results.append(
+                            {
+                                "address": message.addr,
+                                "cost": message.response["result"],
+                            }
+                        )
+                except Exception:
+                    print(
+                        f"Main: Error: Exception for {message.addr}:\n"
+                        f"{traceback.format_exc()}"
+                    )
+                    message.close()
+            # Check for a socket being monitored to continue.
+            if not sel.get_map():
+                break
+    except KeyboardInterrupt:
+        print("Caught keyboard interrupt, exiting")
+
+    sel.close()
 
 
 if __name__ == "__main__":
