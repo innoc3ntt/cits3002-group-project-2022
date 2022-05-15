@@ -59,3 +59,12 @@ configs, actions = parse_file(sys.argv[1])
 
 print(configs)
 print(actions)
+
+actionset1 = actions[0]
+action1_1 = actionset1[1][0]
+
+if action1_1[-1][0] == "requires":
+    files = action1_1[-1]
+    files = files[1:]
+
+print(files)

@@ -7,8 +7,8 @@ sel = selectors.DefaultSelector()
 # messages = [b"Message 1 from client.", b"Message 2 from client."]
 messages = []
 
-file = open("func1.c")
-file_data = file.read().encode("utf-8")
+file = open("a.out", "rb")
+file_data = file.read()
 messages.append(file_data)
 
 print(file_data)
@@ -53,8 +53,18 @@ def service_connection(key, mask):
             data.outb = data.messages.pop(0)
         if data.outb:
             print(f"Sending {data.outb!r} to connection {data.connid}")
-            sent = sock.send(data.outb)  # Should be ready to write
+            sent = sock.sendall(data.outb)  # Should be ready to write
             data.outb = data.outb[sent:]
+
+
+# def send_file(self, filename):
+#     print("Sending:", filename)
+#     with open(filename, "rb") as f:
+#         raw = f.read()
+#     # Send actual length ahead of data, with fixed byteorder and size
+#     self.sock.sendall(len(raw).to_bytes(8, "big"))
+#     # You have the whole thing in memory anyway; don't bother chunking
+#     self.sock.sendall(raw)
 
 
 if len(sys.argv) != 4:

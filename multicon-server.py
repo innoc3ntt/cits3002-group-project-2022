@@ -4,11 +4,17 @@ import selectors
 import types
 import time
 import random
+import os
+
 
 sel = selectors.DefaultSelector()
 random.seed(time.time())
 
-file = open("test.c", "wb")
+# TESTING SENDING BINARY FILE
+cwd = os.getcwd()
+test = os.path.join(cwd, "test", "test_output")
+file = open(test, "wb")
+
 
 
 def accept_wrapper(sock):

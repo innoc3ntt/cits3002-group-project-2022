@@ -72,16 +72,12 @@ class Message:
         return json.dumps(obj, ensure_ascii=False).encode(encoding)
 
     def _json_decode(self, json_bytes, encoding):
-        tiow = io.TextIOWrapper(
-            io.BytesIO(json_bytes), encoding=encoding, newline=""
-        )
+        tiow = io.TextIOWrapper(io.BytesIO(json_bytes), encoding=encoding, newline="")
         obj = json.load(tiow)
         tiow.close()
         return obj
 
-    def _create_message(
-        self, *, content_bytes, content_type, content_encoding
-    ):
+    def _create_message(self, *, content_bytes, content_type, content_encoding):
         jsonheader = {
             "byteorder": sys.byteorder,
             "content-type": content_type,
@@ -105,14 +101,11 @@ class Message:
             # pass in a remote execution
             shell = self.request.get("shell")
             other = self.request.get("value")
-            process = subprocess.run(
-                [shell, other], check=True, capture_output=True
-            )
+            process = subprocess.run([shell, other], check=True, capture_output=True)
             content = {
                 "output": process.stdout.decode("utf-8"),
                 "exit_status": process.returncode,
             }
-            pass
         else:
             content = {"result": f"Error: invalid action '{action}'."}
         content_encoding = "utf-8"
@@ -125,8 +118,7 @@ class Message:
 
     def _create_response_binary_content(self):
         response = {
-            "content_bytes": b"First 10 bytes of request: "
-            + self.request[:10],
+            "content_bytes": b"First 10 bytes of request: " + self.request[:10],
             "content_type": "binary/custom-server-binary-type",
             "content_encoding": "binary",
         }
@@ -165,10 +157,7 @@ class Message:
         try:
             self.selector.unregister(self.sock)
         except Exception as e:
-            print(
-                f"Error: selector.unregister() exception for "
-                f"{self.addr}: {e!r}"
-            )
+            print(f"Error: selector.unregister() exception for " f"{self.addr}: {e!r}")
 
         try:
             self.sock.close()
@@ -181,17 +170,13 @@ class Message:
     def process_protoheader(self):
         hdrlen = 2
         if len(self._recv_buffer) >= hdrlen:
-            self._jsonheader_len = struct.unpack(
-                ">H", self._recv_buffer[:hdrlen]
-            )[0]
+            self._jsonheader_len = struct.unpack(">H", self._recv_buffer[:hdrlen])[0]
             self._recv_buffer = self._recv_buffer[hdrlen:]
 
     def process_jsonheader(self):
         hdrlen = self._jsonheader_len
         if len(self._recv_buffer) >= hdrlen:
-            self.jsonheader = self._json_decode(
-                self._recv_buffer[:hdrlen], "utf-8"
-            )
+            self.jsonheader = self._json_decode(self._recv_buffer[:hdrlen], "utf-8")
             self._recv_buffer = self._recv_buffer[hdrlen:]
             for reqhdr in (
                 "byteorder",
