@@ -141,6 +141,12 @@ class Message:
                 "content_type": content_type,
                 "content_encoding": content_encoding,
             }
+        elif content_type == "command":
+            req = {
+                "content_bytes": self._json_encode(content, content_encoding),
+                "content_type": content_type,
+                "content_encoding": content_encoding,
+            }
         else:
             req = {
                 "content_bytes": content,

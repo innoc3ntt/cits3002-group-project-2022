@@ -1,3 +1,5 @@
+import glob
+import os
 import subprocess
 import sys
 import selectors
@@ -97,18 +99,6 @@ class Message:
             content = {"result": answer}
         elif action == "query":
             content = {"result": random.randint(0, 100)}
-        elif action == "remote":
-            # pass in a remote execution
-            shell = self.request.get("shell")
-            other = self.request.get("value")
-            running_list = [shell]
-            running_list.extend(other)
-            print(running_list)
-            process = subprocess.run(running_list, check=True, capture_output=True)
-            content = {
-                "output": process.stdout.decode("utf-8"),
-                "exit_status": process.returncode,
-            }
         else:
             content = {"result": f"Error: invalid action '{action}'."}
         content_encoding = "utf-8"
@@ -122,6 +112,14 @@ class Message:
     def _create_response_binary_content(self):
         response = {
             "content_bytes": b"First 10 bytes of request: " + self.request[:10],
+            "content_type": "binary",
+            "content_encoding": "binary",
+        }
+        return response
+
+    def _create_response_content(self, data):
+        response = {
+            "content_bytes": data,
             "content_type": "binary/custom-server-binary-type",
             "content_encoding": "binary",
         }
@@ -199,8 +197,8 @@ class Message:
             encoding = self.jsonheader["content-encoding"]
             self.request = self._json_decode(data, encoding)
             print(f"Received request {self.request!r} from {self.addr}")
-        else:
-            # Binary or unknown content-type
+        elif self.jsonheader["content-type"] == "binary":
+            # Binary or unknown content-type, file recieved
             self.request = data
             print(
                 f"Received {self.jsonheader['content-type']} "
@@ -208,6 +206,39 @@ class Message:
             )
             with open("testfile", "wb") as f:
                 f.write(data)
+        elif self.jsonheader["content-type"] == "command":
+            # if a command is given
+            # encoding = self.jsonheader["content-encoding"]
+            encoding = "utf-8"
+            # print("data is ")
+            # print(data)
+            self.request = self._json_decode(data, encoding)
+
+            print(f"Received request {self.request!r} from {self.addr}")
+            shell = self.request.get("shell")
+            value = self.request.get("value")
+            req_file = self.request.get("req_file")
+            cmd = [shell]
+            cmd.extend(value)
+            cmd.append(req_file)
+
+            print("cmd is")
+
+            print(cmd)
+            process = subprocess.run(cmd, check=True, capture_output=True)
+            content = {
+                "output": process.stdout.decode("utf-8"),
+                "exit_status": process.returncode,
+            }
+
+            # get newest file, send it back
+            list_of_files = glob.glob(
+                "./*"
+            )  # * means all if need specific format then *.csv
+            latest_file = max(list_of_files, key=os.path.getctime)
+
+            with open(latest_file, "rb") as f:
+                data = f.read()
 
         # Set selector to listen for write events, we're done reading.
         self._set_selector_events_mask("w")
@@ -215,9 +246,13 @@ class Message:
     def create_response(self):
         if self.jsonheader["content-type"] == "text/json":
             response = self._create_response_json_content()
-        else:
+        elif self.jsonheader["content-type"] == "binary":
             # Binary or unknown content-type
             response = self._create_response_binary_content()
+        elif self.jsonheader["content-type"] == "command":
+            # if a cc command is given
+            response = self._create_response_command()
+
         message = self._create_message(**response)
         self.response_created = True
         self._send_buffer += message

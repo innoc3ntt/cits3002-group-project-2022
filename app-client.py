@@ -5,19 +5,14 @@ import socket
 import selectors
 import traceback
 import os
-import subprocess
 
 import libclient
-
-# remove later
-
-import tqdm
 
 
 sel = selectors.DefaultSelector()
 
 
-def create_request(action, value=None, shell="echo"):
+def create_request(action, value=None, shell="echo", req_file=None):
     if action == "search":
         return dict(
             type="text/json",
@@ -34,13 +29,17 @@ def create_request(action, value=None, shell="echo"):
         return dict(
             type="text/json",
             encoding="utf-8",
-            content=dict(action=action, shell=shell, value=value),
+            content=dict(action=action, shell=shell, value=value, req_file=req_file),
         )
-    # elif action == "file":
-    #     return dict(type="binary/custom-server-binary-type", encoding="binary", content=)
+    elif action == "command":
+        return dict(
+            type="command",
+            encoding="utf-8",
+            content=dict(action=action, shell=shell, value=value, req_file=req_file),
+        )
     else:
         return dict(
-            type="binary/custom-client-binary-type",
+            type="binary",
             encoding="binary",
             content=value,
         )
@@ -154,7 +153,7 @@ def remote(minCost, request):
     #     sel.close()
 
 
-def send_file(filename, host, port):
+def send_file(host, port, filename):
     with open(filename, "rb") as f:
         data = f.read()
 
@@ -184,7 +183,9 @@ def send_file(filename, host, port):
 
 
 def cc(host, port, filename):
-    request = create_request("remote", shell="cc", value=["-o", "output", filename])
+    request = create_request(
+        "command", shell="cc", value=["-o", "output"], req_file=filename
+    )
 
     start_connection(host, port, request)
 
@@ -195,14 +196,6 @@ def cc(host, port, filename):
                 message = key.data
                 try:
                     message.process_events(mask)
-                    # print(key.data)
-                    if mask & selectors.EVENT_READ:
-                        results.append(
-                            {
-                                "address": message.addr,
-                                "cost": message.response["result"],
-                            }
-                        )
                 except Exception:
                     print(
                         f"Main: Error: Exception for {message.addr}:\n"
