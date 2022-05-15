@@ -51,20 +51,25 @@ def parse_file(filename):
     return configs, actions
 
 
-if len(sys.argv) != 2:
-    print(f"Usage: {sys.argv[0]} <filename> ")
-    sys.exit(1)
+def main():
+    if len(sys.argv) != 2:
+        print(f"Usage: {sys.argv[0]} <filename> ")
+        sys.exit(1)
 
-configs, actions = parse_file(sys.argv[1])
+    configs, actions = parse_file(sys.argv[1])
 
-print(configs)
-print(actions)
+    print(configs)
+    print(actions)
 
-actionset1 = actions[0]
-action1_1 = actionset1[1][0]
+    actionset1 = actions[0]
+    action1_1 = actionset1[1][0]
 
-if action1_1[-1][0] == "requires":
-    files = action1_1[-1]
-    files = files[1:]
+    if action1_1[-1][0] == "requires":
+        files = action1_1[-1]
+        files = files[1:]
 
-print(files)
+    print(files)
+
+
+if __name__ == "__main__":
+    main()
