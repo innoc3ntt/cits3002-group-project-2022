@@ -76,6 +76,11 @@ results = []
 
 # first query
 def query():
+    """
+    Run for each action in an actionset to query all the connected servers.
+    will return the minimum bid server and it's ip address
+
+    """
 
     host = "127.0.0.1"
     query = create_request("query")
@@ -119,18 +124,11 @@ def query():
 
     minCost = min(results, key=lambda x: x["cost"])
 
-    print("mincost")
-    print(minCost)
-
     return minCost
 
 
-def remote(minCost):
-    print()
-    print()
+def remote(minCost, request):
     host, port = minCost["address"]
-    # request = create_request("remote", "-l", subp="ls")
-    request = create_request("remote", "-jy", subp="cal")
 
     start_connection(host, port, request)
 
@@ -156,16 +154,12 @@ def remote(minCost):
     #     sel.close()
 
 
-def sendFile():
-    host = "127.0.0.1"
+def send_file(filename, host, port):
+    with open(filename, "rb") as f:
+        data = f.read()
 
-    file = open("test.c", "rb")
-    bytes_read = file.read()
-    print("LENGHT IS :   " + str(len(bytes_read)))
-    file_send = create_request("file", bytes_read)
-
-    # pretend there are 3 actions
-    start_connection(host, 65432, file_send)
+    request = create_request("file", data)
+    start_connection(host, port, request)
 
     try:
         while True:
@@ -189,20 +183,11 @@ def sendFile():
     #     sel.close()
 
 
-def main():
-    # both_commands()
-    # subprocess.run(both_commands)
-    # minimums = []
+def cc(host, port, filename):
+    request = create_request("remote", shell="cc", value=["-o", "output", filename])
 
-    # for action in range(3):
-    #     minimums.append(query())
+    start_connection(host, port, request)
 
-    # for action in minimums:
-    #     remote(action)
-    sendFile()
-    c_req = create_request("remote", shell="cc", value=["-o", "output", "test.c"])
-
-    start_connection("127.0.0.1", 65432, c_req)
     try:
         while True:
             events = sel.select(timeout=1)
@@ -229,6 +214,19 @@ def main():
                 break
     except KeyboardInterrupt:
         print("Caught keyboard interrupt, exiting")
+
+
+def main():
+    host = "127.0.0.1"
+    port = 65432
+
+    # for action in range(3):
+    #     minimums.append(query())
+
+    # for action in minimums:
+    #     remote(action)
+    send_file(host, port, "test.c")
+    cc(host, port, "test.c")
 
     sel.close()
 
