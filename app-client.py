@@ -5,8 +5,14 @@ import socket
 import selectors
 import traceback
 import os
+import subprocess
 
 import libclient
+
+# remove later
+
+import tqdm
+
 
 sel = selectors.DefaultSelector()
 
@@ -30,6 +36,8 @@ def create_request(action, value=None, subp="echo"):
             encoding="utf-8",
             content=dict(action=action, shell=subp, value=value),
         )
+    # elif action == "file":
+    #     return dict(type="binary/custom-server-binary-type", encoding="binary", content=)
     else:
         return dict(
             type="binary/custom-client-binary-type",
@@ -49,17 +57,6 @@ def start_connection(host, port, request):
     sel.register(sock, events, data=message)
 
 
-# host = "127.0.0.1"
-# action = "query"
-
-# test sending binary file
-
-cwd = os.getcwd()
-test = os.path.join(cwd, "test", "test_output")
-
-file = open("a.out", "rb")
-
-
 # if len(sys.argv) != 5:
 #     print(f"Usage: {sys.argv[0]} <host> <port> <action> <value>")
 #     sys.exit(1)
@@ -72,6 +69,10 @@ ports = [65432, 65431]
 
 results = []
 
+# in an action set, for each action, run a query to all hosts
+# collect the returned costs, send a request to remote host,
+# which may involve sending a file for each action and receiving back a file from each host
+
 
 # first query
 def query():
@@ -79,7 +80,10 @@ def query():
     host = "127.0.0.1"
     query = create_request("query")
 
+    # pretend there are 3 actions
+
     for port in ports:
+        # for each host!
         start_connection(host, port, query)
 
     results = []
@@ -148,8 +152,8 @@ def remote(minCost):
                 break
     except KeyboardInterrupt:
         print("Caught keyboard interrupt, exiting")
-    finally:
-        sel.close()
+    # finally:
+    #     sel.close()
 
 
 # working on sendfile
@@ -194,10 +198,21 @@ def send_file(filename, host, port):
     s.close()
 
 
-def main():
+def both_commands():
     minCost = query()
-
     remote(minCost)
+
+
+def main():
+    # both_commands()
+    # subprocess.run(both_commands)
+    minimums = []
+
+    for action in range(3):
+        minimums.append(query())
+
+    for action in minimums:
+        remote(action)
 
 
 if __name__ == "__main__":
