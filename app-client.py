@@ -101,7 +101,7 @@ def query(addresses):
     # mock the actionset input here
     actions = [
         "actionset1:",
-        [["remote-cc", "test.c", ["requires", "test.c"]]],
+        ["remote-cc", "test.c", ["requires", "test.c"]],
         ["echo", "hello"],
     ]
 
@@ -113,11 +113,12 @@ def query(addresses):
     queries = [[] for x in actions]
 
     # mock actionset 1 only first
-    for action in actions[1:]:
+    for index, action in enumerate(actions[1:]):
 
         fd_action = []
-        if action[1][-1][0] == "requires":
-            print("FUCK")
+        if action[-1][0] == "requires":
+            for file in action[-1][1:]:
+                requires[index].append()
 
         for address in addresses:
             # for each host!

@@ -12,6 +12,7 @@ def parse_file(filename):
             chars = line.split()
 
             if line.startswith("#") or line == "\n":
+                # SKIP COMMENTS AND EMPTY LINES
                 continue
 
             if "=" in chars:
@@ -38,15 +39,19 @@ def parse_file(filename):
 
             elif re.match(r"^\s{4}[a-z]", line):
                 # if line begins with 4 spaces/1 tab, defines a command
-                buffer.append(line.split())
+                # FIXME: Convert to tabs instead of spaces
+                actions[-1].append(line.split())
 
             elif re.match(r"^\s{8}[a-z]", line):
                 # if line beings with 8 spaces/2 tabs, defines additional arguments
-                buffer[-1].append(line.split())
+                # FIXME: Convert to tabs instead of spaces
+                actions[-1][-1].append(line.split())
+
+                # FIXME : making a 2d array instead of 1D for requires
 
             # on last line of file, add the buffer to last action set
-            # if buffer:
-        actions[-1].append(buffer)
+        if buffer:
+            actions[-1].append(buffer)
 
     return configs, actions
 
@@ -68,7 +73,7 @@ def main():
         files = action1_1[-1]
         files = files[1:]
 
-    print(files)
+    # print(files)
 
 
 if __name__ == "__main__":
