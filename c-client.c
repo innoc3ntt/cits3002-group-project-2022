@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <time.h>
 
 #include <arpa/inet.h>
 
@@ -85,7 +86,7 @@ int main(int argc, char *argv[])
     //trying to send a message--------
     //Send some data
 	char* message = "THIS IS WORKING?\n";
-    printf("%lu\n", strlen(message));
+    printf("%lu bytes to be sent\n", strlen(message));
 
     int bytes_sent = send(sockfd , message , strlen(message) , 0);
 
@@ -93,17 +94,17 @@ int main(int argc, char *argv[])
 		puts("Send failed");
 		return 1;
 	}
-	puts("Data Send\n");
-    printf("%i\n", bytes_sent);
+	printf("Data Sent\n");
+    printf("%i bytes have been sent\n", bytes_sent);
 
 	if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
-	    perror("recv");
-	    exit(1);
+		perror("recv");
+		exit(1);
 	}
 
-	// buf[numbytes] = '\0';
-
-	// printf("client: received '%s'\n",buf);
+	buf[numbytes] = '\0';
+	
+	printf("client: received '%s'\n",buf);
 
 	close(sockfd);
 

@@ -7,13 +7,10 @@ import random
 import os
 
 
+#  On this branch this file is being used to test early stages of c-client
+
 sel = selectors.DefaultSelector()
 random.seed(time.time())
-
-# TESTING SENDING BINARY FILE
-# cwd = os.getcwd()
-# test = os.path.join(cwd, "test", "test_output")
-# file = open(test, "wb")
 
 
 
@@ -37,23 +34,13 @@ def service_connection(key, mask):
             print(f"Closing connection to {data.addr}")
             sel.unregister(sock)
             sock.close()
-            # file.write(data.outb)
-            # file.close()
     if mask & selectors.EVENT_WRITE:
         if data.outb:
             time.sleep(random.randint(0, 5))
             print(f"Echoing {data.outb!r} to {data.addr}")
-            # file.write(data.outb)
-            # file.close()
             sent = sock.send(data.outb)  # Should be ready to write
             data.outb = data.outb[sent:]
 
-
-# if len(sys.argv) != 3:
-#     print(f"Usage: {sys.argv[0]} <host> <port>")
-#     sys.exit(1)
-
-# host, port = sys.argv[1], int(sys.argv[2])
 host, port = ("127.0.0.1", 8000)
 
 lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
