@@ -3,9 +3,15 @@ import socket
 import selectors
 import types
 import pickle
+import tempfile
 
 HOST = "localhost"
-PORT = 8000
+PORT = 8002
+
+file = open("test", "w")
+
+temp = tempfile.TemporaryFile()
+
 
 def accept_wrapper(sock):
     conn, addr = sock.accept()  # Should be ready to read
@@ -14,6 +20,7 @@ def accept_wrapper(sock):
     data = types.SimpleNamespace(addr=addr, inb=b"", outb=b"")
     events = selectors.EVENT_READ | selectors.EVENT_WRITE
     sel.register(conn, events, data=data)
+
 
 def service_connection(key, mask):
     sock = key.fileobj
@@ -31,8 +38,13 @@ def service_connection(key, mask):
         # This is where the data received by the server can be handled
         if data.outb:
             my_data = pickle.loads(data.outb)
+            print(data.outb)
+            temp.write(data.outb)
+            file.write(my_data)
+            file.close()
             print(f"Echoing {my_data!r} to {data.addr}")
             sent = sock.send(data.outb)  # Should be ready to write
+
             data.outb = data.outb[sent:]
 
 
@@ -57,3 +69,8 @@ except KeyboardInterrupt:
     print("Caught keyboard interrupt, exiting")
 finally:
     sel.close()
+
+
+temp.seek(0)
+print(temp.read().decode("utf-8"))
+temp.close()

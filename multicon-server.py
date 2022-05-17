@@ -5,6 +5,11 @@ import types
 import time
 import random
 
+import tempfile
+
+temp = tempfile.TemporaryFile()
+
+
 sel = selectors.DefaultSelector()
 random.seed(time.time())
 

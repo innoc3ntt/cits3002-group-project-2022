@@ -11,17 +11,20 @@ def main():
     logging.info("Rakefile parsed")
 
     HOST = "localhost"
-    PORT = 8000
+    PORT = 8002
+
+    file = open("func1.c", "r")
+    data1 = file.read().encode("utf-8")
+    print(data1)
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.connect((HOST, PORT))
         # trying to send action set to server, not sure if required but here if needed
-        data_string = pickle.dumps(actions)
-        s.send(data_string)
+        s.send(data1)
         data = s.recv(4096)
-        data_arr = pickle.loads(data)
+    #     data_arr = pickle.loads(data)
 
-    print(f"Received {data_arr!r}")
+    # print(f"Received {data_arr!r}")
 
     for actionset in actions:
         for action in actionset[1]:

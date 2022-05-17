@@ -6,6 +6,11 @@ import types
 sel = selectors.DefaultSelector()
 messages = [b"Message 1 from client.", b"Message 2 from client."]
 
+file = open("func1.c")
+data_to_send = file.read().encode("utf-8")
+
+# print(data_to_send)
+
 
 def start_connections(host, port, num_conns):
     server_addr = (host, port)
@@ -44,20 +49,21 @@ def service_connection(key, mask):
     if mask & selectors.EVENT_WRITE:
         if not data.outb and data.messages:
             data.outb = data.messages.pop(0)
+            # data.outb = data_to_send
         if data.outb:
             print(f"Sending {data.outb!r} to connection {data.connid}")
             sent = sock.send(data.outb)  # Should be ready to write
             data.outb = data.outb[sent:]
 
 
-if len(sys.argv) != 4:
-    print(f"Usage: {sys.argv[0]} <host> <port> <num_connections>")
-    sys.exit(1)
+# if len(sys.argv) != 4:
+#     print(f"Usage: {sys.argv[0]} <host> <port> <num_connections>")
+#     sys.exit(1)
 
-host, port, num_conns = sys.argv[1:4]
-start_connections(host, int(port), int(num_conns))
+# host, port, num_conns = sys.argv[1:4]
+# start_connections(host, int(port), int(num_conns))
 
-# start_connections("127.0.0.1", 65432, 1)
+start_connections("127.0.0.1", 8000, 1)
 # start_connections("127.0.0.1", 65431, 1)
 
 try:
