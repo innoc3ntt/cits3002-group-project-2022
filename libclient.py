@@ -83,7 +83,7 @@ class Message:
 
     def _process_response_binary_content(self):
         content = self.response
-        print(f"Got response: {content!r}")
+        print(f"Got response: {content[:10]}")
 
     def _process_response_command(self):
         content = self.response
@@ -189,11 +189,13 @@ class Message:
             return
         data = self._recv_buffer[:content_len]
         self._recv_buffer = self._recv_buffer[content_len:]
+
         if self.jsonheader["content-type"] == "text/json":
             encoding = self.jsonheader["content-encoding"]
             self.response = self._json_decode(data, encoding)
             print(f"Received response {self.response!r} from {self.addr}")
             self._process_response_json_content()
+
         elif self.jsonheader["content-type"] == "command":
             self.response = data
             print(

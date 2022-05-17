@@ -55,6 +55,8 @@ def start_connection(host, port, request):
     message = libclient.Message(sel, sock, addr, request)
     sel.register(sock, events, data=message)
 
+    return sock.fileno()
+
 
 # if len(sys.argv) != 5:
 #     print(f"Usage: {sys.argv[0]} <host> <port> <action> <value>")
@@ -68,9 +70,18 @@ ports = [65432, 65431]
 
 results = []
 
-# in an action set, for each action, run a query to all hosts
-# collect the returned costs, send a request to remote host,
-# which may involve sending a file for each action and receiving back a file from each host
+"""
+in an action set, for each action, run a query to all hosts
+collect the returned costs, send a request to remote host,
+which may involve sending a file for each action and receiving back a file from each host
+"""
+
+
+def in_list(c, classes):
+    for i, sublist in enumerate(classes):
+        if c in sublist:
+            return i
+    return -1
 
 
 # first query
@@ -83,28 +94,65 @@ def query(addresses):
 
     query = create_request("query")
 
-    for address in addresses:
-        # for each host!
-        host, port = address
-        start_connection(host, port, query)
+    # mock the actionset input here
+    actionset = ["action1", "action2"]
 
-    results = []
+    # buffer to hold all the socket descriptors
+    fd_all = []
+
+    for index, action in enumerate(actionset):
+
+        fd_action = []
+        for address in addresses:
+            # for each host!
+            host, port = address
+            fd = start_connection(host, port, query)
+            fd_action.append(fd)
+
+        fd_all.append(fd_action)
+
+    queries = [[] for x in actionset]
 
     try:
         while True:
             events = sel.select(timeout=1)
             for key, mask in events:
                 message = key.data
+
+                """experimental"""
                 try:
                     message.process_events(mask)
-                    # print(key.data)
-                    if mask & selectors.EVENT_READ:
-                        results.append(
-                            {
-                                "address": message.addr,
-                                "cost": message.response["result"],
-                            }
-                        )
+
+                    socket_no = key.fd
+                    if (
+                        message.response
+                        and message.jsonheader["content-type"] == "text/json"
+                    ):
+                        # print("HELP!")
+
+                        which_list = in_list(socket_no, fd_all)
+                        # print(f"In list:  + {which_list}")
+
+                        if which_list != -1:
+                            fd_all[which_list].remove(socket_no)
+                            queries[which_list].append(
+                                {
+                                    "address": message.addr,
+                                    "cost": message.response["result"],
+                                }
+                            )
+
+                        if not fd_all[which_list]:
+                            """
+                            if for an action, not waiting for any more sockets to return
+                            determine the lowest bid and send the next request
+                            by starting a new connection with different request
+
+                            """
+
+                            minCost = min(queries[which_list], key=lambda x: x["cost"])
+                            print(f"Start connection to {minCost}")
+
                 except Exception:
                     print(
                         f"Main: Error: Exception for {message.addr}:\n"
@@ -118,8 +166,6 @@ def query(addresses):
         print("Caught keyboard interrupt, exiting")
     # finally:
     #     sel.close()
-
-    minCost = min(results, key=lambda x: x["cost"])
 
     return minCost
 
@@ -208,16 +254,20 @@ def cc(host, port, filename):
 
 
 def main():
+
+    # parser(filename)
+
+    # mock return of parser
     host = "127.0.0.1"
     port = 65432
 
     port2 = 65431
 
-    addresses = [(host, port), (host, port2)]
+    addresses = [(host, port), (host, port2), (host, port)]
 
     query(addresses)
-    send_file(host, port, "test.c")
-    cc(host, port, "test.c")
+    # send_file(host, port, "test.c")
+    # cc(host, port, "test.c")
 
     sel.close()
 

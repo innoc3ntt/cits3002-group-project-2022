@@ -11,12 +11,6 @@ import random
 
 random.seed(time.time())
 
-request_search = {
-    "morpheus": "Follow the white rabbit. \U0001f430",
-    "ring": "In the caves beneath the Misty Mountains. \U0001f48d",
-    "\U0001f436": "\U0001f43e Playing ball! \U0001f3d0",
-}
-
 
 class Message:
     def __init__(self, selector, sock, addr):
@@ -95,8 +89,8 @@ class Message:
         action = self.request.get("action")
         if action == "search":
             query = self.request.get("value")
-            answer = request_search.get(query) or f"No match for '{query}'."
-            content = {"result": answer}
+            # answer = request_search.get(query) or f"No match for '{query}'."
+            # content = {"result": answer}
         elif action == "query":
             content = {"result": random.randint(0, 100)}
         else:
