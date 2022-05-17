@@ -12,31 +12,40 @@ sel = selectors.DefaultSelector()
 colorama.init(autoreset=True)
 
 
-def create_request(action, value=None, shell="echo", req_file=None):
-    if action == "query":
+def create_request(request, action=None, args=None, shell="echo", files=None):
+    """
+    Create a request to pass to start_connection
+    One of three types
+    - query
+    - command
+    - file
+
+    Parameters:
+        request (str): type of request, query, command or file
+        action (int): action number associated with
+        args: extra args to pass to a "command" request
+        shell: command to pass to shell, default echo
+        files: name of files to send
+
+    Returns:
+        (dict) A dictionary representing the request object
+    """
+    if request == "query":
         return dict(
             type="text/json",
             encoding="utf-8",
-            content=dict(action=action),
+            content=dict(request=request),
+            action=action,
         )
-    elif action == "remote":
-        return dict(
-            type="text/json",
-            encoding="utf-8",
-            content=dict(action=action, shell=shell, value=value, req_file=req_file),
-        )
-    elif action == "command":
+    elif request == "command":
         return dict(
             type="command",
             encoding="utf-8",
-            content=dict(action=action, shell=shell, value=value, req_file=req_file),
+            content=dict(request=request, shell=shell, args=args, files=files),
+            action=action,
         )
-    else:
-        return dict(
-            type="binary",
-            encoding="binary",
-            content=value,
-        )
+    elif request == "file":
+        return dict(type="binary", encoding="binary", content=args, action=action)
 
 
 def start_connection(host, port, request):
@@ -96,7 +105,7 @@ def event_loop(addresses):
 
     """
 
-    query = create_request("query")
+    query = create_request("query", -1)
 
     # mock the actionset input here
     actions = [
@@ -151,10 +160,13 @@ def event_loop(addresses):
                         if action_n != -1:
                             # If there is a socket being awaited on, remove it from queue and store result
                             queues[action_n].remove(socket_no)
+
+                            # print(f"{colorama.Fore.CYAN} Received {message} ")
+
                             queries[action_n].append(
                                 {
                                     "address": message.addr,
-                                    "cost": message.response["result"],
+                                    "cost": message.response["cost"],
                                 }
                             )
 
@@ -178,36 +190,44 @@ def event_loop(addresses):
                                     f"{colorama.Fore.BLUE}Sending file: {file} to {host} {port}"
                                 )
                                 # TODO: Send multiple files!
-                                sock = send_file(host, port, file)
-                                fd.append(sock)
+                                # sock = send_file(host, port, file, action_n)
+                                # fd.append(sock)
 
                             queues[action_n].extend(fd)
                             # if no files or all the files have been sent
                             # TODO: keep track of when files have been sucessfully received
 
                     if message.response and (
-                        message.jsonheader["content-type"] == "files_received"
+                        message.jsonheader["content-type"] == "binary"
                     ):
+                        # the queue will currently hold all the connections which a file has been sent and awaiting a reply
+                        # which action is the returning socket for?
+                        action_n = in_list(socket_no, queues)
 
-                        # if not queues[action_n]:
-                        #     # temporary loop to see again if queue is empty,
-                        #     # TODO: refactor this
-                        #     actions[1:][action_n]
+                        if action_n != -1:
+                            # If there is a socket being awaited on, remove it from queue
+                            queues[action_n].remove(socket_no)
 
-                        #     print(f"{colorama.Fore.GREEN}FINALLY RUN ACTUAL ACTION")
+                        if not queues[action_n]:
+                            # temporary loop to see again if queue is empty,if so run the action
+                            # TODO: refactor this
+                            actions[1:][action_n]
 
-                        # mock assume that file sucessfully sent
-                        actions[1:][action_n]
+                            print(f"{colorama.Fore.GREEN}FINALLY RUN ACTUAL ACTION")
 
-                        request = create_request(
-                            "command",
-                            shell="cc",
-                            value=["-o", "output"],
-                            req_file=requires[action_n],
-                        )
+                            # mock assume that file sucessfully sent
+                            actions[1:][action_n]
 
-                        start_connection(host, port, request)
-                        # TODO: receive the output file and do something with it here
+                            request = create_request(
+                                "command",
+                                shell="cc",
+                                args=["-o", "output"],
+                                files=requires[action_n],
+                                action=action_n,
+                            )
+
+                            # start_connection(host, port, request)
+                            # TODO: receive the output file and do something with it here
 
                 except Exception:
                     print(
@@ -224,7 +244,7 @@ def event_loop(addresses):
     #     sel.close()
 
 
-def send_file(host, port, filename):
+def send_file(host, port, filename, action):
     """
     Send a file on a host
 
@@ -239,35 +259,8 @@ def send_file(host, port, filename):
     with open(filename, "rb") as f:
         data = f.read()
 
-    request = create_request("file", data)
+    request = create_request(request="file", args=data, action=action)
     return start_connection(host, port, request)
-
-
-def cc(host, port, filename):
-    request = create_request(
-        "command", shell="cc", value=["-o", "output"], req_file=filename
-    )
-
-    start_connection(host, port, request)
-
-    try:
-        while True:
-            events = sel.select(timeout=1)
-            for key, mask in events:
-                message = key.data
-                try:
-                    message.process_events(mask)
-                except Exception:
-                    print(
-                        f"Main: Error: Exception for {message.addr}:\n"
-                        f"{traceback.format_exc()}"
-                    )
-                    message.close()
-            # Check for a socket being monitored to continue.
-            if not sel.get_map():
-                break
-    except KeyboardInterrupt:
-        print("Caught keyboard interrupt, exiting")
 
 
 def main():

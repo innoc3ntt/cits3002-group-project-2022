@@ -11,6 +11,7 @@ import random
 import colorama
 
 random.seed(time.time())
+colorama.init(autoreset=True)
 
 
 class Message:
@@ -74,12 +75,13 @@ class Message:
         tiow.close()
         return obj
 
-    def _create_message(self, *, content_bytes, content_type, content_encoding):
+    def _create_message(self, *, content_bytes, content_type, content_encoding, action):
         jsonheader = {
             "byteorder": sys.byteorder,
             "content-type": content_type,
             "content-encoding": content_encoding,
             "content-length": len(content_bytes),
+            "action": action,
         }
         jsonheader_bytes = self._json_encode(jsonheader, "utf-8")
         message_hdr = struct.pack(">H", len(jsonheader_bytes))
@@ -87,20 +89,21 @@ class Message:
         return message
 
     def _create_response_json_content(self):
+        request = self.request.get("request")
         action = self.request.get("action")
-        if action == "search":
-            query = self.request.get("value")
-            # answer = request_search.get(query) or f"No match for '{query}'."
-            # content = {"result": answer}
-        elif action == "query":
-            content = {"result": random.randint(0, 100)}
+
+        if request == "query":
+            content = {"cost": random.randint(0, 100)}
+            print(f"{colorama.Fore.YELLOW}Sencding: {content}")
         else:
-            content = {"result": f"Error: invalid action '{action}'."}
+            pass
+            # content = {"result": f"Error: invalid action '{action}'."}
         content_encoding = "utf-8"
         response = {
             "content_bytes": self._json_encode(content, content_encoding),
             "content_type": "text/json",
             "content_encoding": content_encoding,
+            "action": action,
         }
         return response
 
@@ -115,10 +118,10 @@ class Message:
     def _create_response_command(self):
         shell = self.request.get("shell")
         value = self.request.get("value")
-        req_file = self.request.get("req_file")
+        files = self.request.get("files")
         cmd = [shell]
         cmd.extend(value)
-        cmd.append(req_file)
+        cmd.extend(files)
 
         print(f"{colorama.Fore.RED}CMD: {cmd}")
 
@@ -255,10 +258,11 @@ class Message:
         elif self.jsonheader["content-type"] == "binary":
             # Binary or unknown content-type
             response = self._create_response_binary_content()
+            print(f"{colorama.Fore.CYAN} create response binary")
         elif self.jsonheader["content-type"] == "command":
             # if a cc command is given
             response = self._create_response_command()
-            print("command run")
+            print(f"{colorama.Fore.YELLOW}Create 'command' response")
 
         message = self._create_message(**response)
         self.response_created = True

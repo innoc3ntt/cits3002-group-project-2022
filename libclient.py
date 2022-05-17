@@ -64,11 +64,12 @@ class Message:
         tiow.close()
         return obj
 
-    def _create_message(self, *, content_bytes, content_type, content_encoding):
+    def _create_message(self, *, content_bytes, content_type, content_encoding, action):
         jsonheader = {
             "byteorder": sys.byteorder,
             "content-type": content_type,
             "content-encoding": content_encoding,
+            "action": action,
             "content-length": len(content_bytes),
         }
         jsonheader_bytes = self._json_encode(jsonheader, "utf-8")
@@ -78,8 +79,8 @@ class Message:
 
     def _process_response_json_content(self):
         content = self.response
-        result = content.get("result")
-        print(f"Got result: {result}")
+        cost = content.get("cost")
+        # print(f"Got cost: {cost}")
 
     def _process_response_binary_content(self):
         content = self.response
@@ -141,23 +142,27 @@ class Message:
         content = self.request["content"]
         content_type = self.request["type"]
         content_encoding = self.request["encoding"]
+        action = self.request["action"]
         if content_type == "text/json":
             req = {
                 "content_bytes": self._json_encode(content, content_encoding),
                 "content_type": content_type,
                 "content_encoding": content_encoding,
+                "action": action,
             }
         elif content_type == "command":
             req = {
                 "content_bytes": self._json_encode(content, content_encoding),
                 "content_type": content_type,
                 "content_encoding": content_encoding,
+                "action": action,
             }
         else:
             req = {
                 "content_bytes": content,
                 "content_type": content_type,
                 "content_encoding": content_encoding,
+                "action": action,
             }
         message = self._create_message(**req)
         self._send_buffer += message
@@ -179,6 +184,7 @@ class Message:
                 "content-length",
                 "content-type",
                 "content-encoding",
+                # "action",
             ):
                 if reqhdr not in self.jsonheader:
                     raise ValueError(f"Missing required header '{reqhdr}'.")
