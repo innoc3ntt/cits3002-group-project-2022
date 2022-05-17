@@ -1,25 +1,19 @@
-#!/usr/bin/env python3
-
 import sys
 import socket
 import selectors
 import traceback
 import os
+import colorama
 
 import libclient
 
 
 sel = selectors.DefaultSelector()
+colorama.init(autoreset=True)
 
 
 def create_request(action, value=None, shell="echo", req_file=None):
-    if action == "search":
-        return dict(
-            type="text/json",
-            encoding="utf-8",
-            content=dict(action=action, value=value),
-        )
-    elif action == "query":
+    if action == "query":
         return dict(
             type="text/json",
             encoding="utf-8",
@@ -78,6 +72,16 @@ which may involve sending a file for each action and receiving back a file from 
 
 
 def in_list(c, classes):
+    """
+    Convenience function to find which list in a 2D list an integer is in
+
+        Parameters:
+            c (int): The integer to look for
+            classes list[int]: 2D list to search in
+
+        Returns:
+            i (int): index of list containing element, -1 if not found
+    """
     for i, sublist in enumerate(classes):
         if c in sublist:
             return i
@@ -95,14 +99,26 @@ def query(addresses):
     query = create_request("query")
 
     # mock the actionset input here
-    actionset = ["action1", "action2"]
+    actions = [
+        "actionset1:",
+        [["remote-cc", "test.c", ["requires", "test.c"]]],
+        ["echo", "hello"],
+    ]
 
-    # buffer to hold all the socket descriptors
+    actionset1 = actions[0]
+
+    # buffers to hold connection data per action
     fd_all = []
+    requires = [[] for x in actions]
+    queries = [[] for x in actions]
 
-    for index, action in enumerate(actionset):
+    # mock actionset 1 only first
+    for action in actions[1:]:
 
         fd_action = []
+        if action[1][-1][0] == "requires":
+            print("FUCK")
+
         for address in addresses:
             # for each host!
             host, port = address
@@ -110,8 +126,6 @@ def query(addresses):
             fd_action.append(fd)
 
         fd_all.append(fd_action)
-
-    queries = [[] for x in actionset]
 
     try:
         while True:
@@ -130,19 +144,19 @@ def query(addresses):
                     ):
                         # print("HELP!")
 
-                        which_list = in_list(socket_no, fd_all)
+                        action_n = in_list(socket_no, fd_all)
                         # print(f"In list:  + {which_list}")
 
-                        if which_list != -1:
-                            fd_all[which_list].remove(socket_no)
-                            queries[which_list].append(
+                        if action_n != -1:
+                            fd_all[action_n].remove(socket_no)
+                            queries[action_n].append(
                                 {
                                     "address": message.addr,
                                     "cost": message.response["result"],
                                 }
                             )
 
-                        if not fd_all[which_list]:
+                        if not fd_all[action_n]:
                             """
                             if for an action, not waiting for any more sockets to return
                             determine the lowest bid and send the next request
@@ -150,8 +164,16 @@ def query(addresses):
 
                             """
 
-                            minCost = min(queries[which_list], key=lambda x: x["cost"])
-                            print(f"Start connection to {minCost}")
+                            minCost = min(queries[action_n], key=lambda x: x["cost"])
+                            print(f"{colorama.Fore.RED} Start connection to {minCost}")
+
+                            address = minCost["address"]
+                            host, port = address
+
+                            print(f"address is {host} {port}")
+                            # host, port = address
+
+                            send_file(host, port, "test.c")
 
                 except Exception:
                     print(
@@ -170,60 +192,12 @@ def query(addresses):
     return minCost
 
 
-def remote(minCost, request):
-    host, port = minCost["address"]
-
-    start_connection(host, port, request)
-
-    try:
-        while True:
-            events = sel.select(timeout=1)
-            for key, mask in events:
-                message = key.data
-                try:
-                    message.process_events(mask)
-                except Exception:
-                    print(
-                        f"Main: Error: Exception for {message.addr}:\n"
-                        f"{traceback.format_exc()}"
-                    )
-                    message.close()
-                # Check for a socket being monitored to continue.
-            if not sel.get_map():
-                break
-    except KeyboardInterrupt:
-        print("Caught keyboard interrupt, exiting")
-    # finally:
-    #     sel.close()
-
-
 def send_file(host, port, filename):
     with open(filename, "rb") as f:
         data = f.read()
 
     request = create_request("file", data)
     start_connection(host, port, request)
-
-    try:
-        while True:
-            events = sel.select(timeout=1)
-            for key, mask in events:
-                message = key.data
-                try:
-                    message.process_events(mask)
-                except Exception:
-                    print(
-                        f"Main: Error: Exception for {message.addr}:\n"
-                        f"{traceback.format_exc()}"
-                    )
-                    message.close()
-            # Check for a socket being monitored to continue.
-            if not sel.get_map():
-                break
-    except KeyboardInterrupt:
-        print("Caught keyboard interrupt, exiting")
-    # finally:
-    #     sel.close()
 
 
 def cc(host, port, filename):

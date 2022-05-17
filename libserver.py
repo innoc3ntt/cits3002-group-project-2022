@@ -8,6 +8,7 @@ import io
 import struct
 import time
 import random
+import colorama
 
 random.seed(time.time())
 
@@ -119,9 +120,8 @@ class Message:
         cmd.extend(value)
         cmd.append(req_file)
 
-        print("cmd is")
+        print(f"{colorama.Fore.RED}CMD: {cmd}")
 
-        print(cmd)
         process = subprocess.run(cmd, check=True, capture_output=True)
         content = {
             "output": process.stdout.decode("utf-8"),
@@ -213,26 +213,36 @@ class Message:
         content_len = self.jsonheader["content-length"]
         if not len(self._recv_buffer) >= content_len:
             return
+
+        # data populated from buffer
         data = self._recv_buffer[:content_len]
+
         self._recv_buffer = self._recv_buffer[content_len:]
         if self.jsonheader["content-type"] == "text/json":
+            # if json content
             encoding = self.jsonheader["content-encoding"]
             self.request = self._json_decode(data, encoding)
             print(f"Received request {self.request!r} from {self.addr}")
+
         elif self.jsonheader["content-type"] == "binary":
-            # Binary or unknown content-type, file recieved
+            # File recieved
             self.request = data
             print(
                 f"Received {self.jsonheader['content-type']} "
                 f"request from {self.addr}"
             )
+
+            # Write data to file!
+
             with open("testfile", "wb") as f:
                 f.write(data)
+
         elif self.jsonheader["content-type"] == "command":
             # if a command is given
             # encoding = self.jsonheader["content-encoding"]
-            encoding = "utf-8"
+            encoding = self.jsonheader["content-encoding"]
             self.request = self._json_decode(data, encoding)
+            print(f"{colorama.Fore.GREEN}Received command request!")
 
         # print(f"Received request {self.request!r} from {self.addr}")
 
