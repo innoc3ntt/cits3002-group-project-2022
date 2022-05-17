@@ -94,7 +94,7 @@ class Message:
 
         if request == "query":
             content = {"cost": random.randint(0, 100)}
-            print(f"{colorama.Fore.YELLOW}Sending: {content}")
+            print(f"{colorama.Fore.YELLOW}Sending: {content} {action}")
         else:
             pass
             # content = {"result": f"Error: invalid action '{action}'."}
@@ -238,7 +238,10 @@ class Message:
             print(
                 f"Received {self.jsonheader['content-type']} "
                 f"request from {self.addr}"
+                f"{self.jsonheader!r}"
             )
+
+            # FIXME: ENTRY POINTACTION IS STORED IN JSONHEADER!
 
             # Write data to file!
 

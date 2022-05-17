@@ -80,7 +80,7 @@ class Message:
     def _process_response_json_content(self):
         content = self.response
         cost = content.get("cost")
-        # print(f"Got cost: {cost}")
+        print(f"Got cost: {cost}")
 
     def _process_response_binary_content(self):
         content = self.response
