@@ -120,7 +120,7 @@ def event_loop(addresses):
             for file in action[-1][1:]:
                 requires[index].append(file)
             # remove the require for later processing
-            action[-1].pop()
+            action.pop()
 
         for address in addresses:
             # for each host!
@@ -143,7 +143,6 @@ def event_loop(addresses):
                     socket_no = key.fd
                     if message.response and (
                         message.jsonheader["content-type"] == "text/json"
-                        or message.jsonheader["content-type"] == "file/received"
                     ):
                         # TODO: make a file/received type for libclient/libserver
                         # Process the server response to query request, if there is a response and type is query
@@ -178,21 +177,37 @@ def event_loop(addresses):
                                 print(
                                     f"{colorama.Fore.BLUE}Sending file: {file} to {host} {port}"
                                 )
+                                # TODO: Send multiple files!
+                                sock = send_file(host, port, file)
+                                fd.append(sock)
 
-                                fd.append(send_file(host, port, file))
-
-                            queues[action_n].append(fd)
-
-                            # TODO: Send multiple files!
-
+                            queues[action_n].extend(fd)
                             # if no files or all the files have been sent
                             # TODO: keep track of when files have been sucessfully received
-                            if not queues[action_n]:
-                                # temporary loop to see again if queue is empty,
-                                # TODO: refactor this
-                                actions[1:][action_n]
 
-                                print(f"{colorama.Fore.GREEN}FINALLY RUN ACTUAL ACTION")
+                    if message.response and (
+                        message.jsonheader["content-type"] == "files_received"
+                    ):
+
+                        # if not queues[action_n]:
+                        #     # temporary loop to see again if queue is empty,
+                        #     # TODO: refactor this
+                        #     actions[1:][action_n]
+
+                        #     print(f"{colorama.Fore.GREEN}FINALLY RUN ACTUAL ACTION")
+
+                        # mock assume that file sucessfully sent
+                        actions[1:][action_n]
+
+                        request = create_request(
+                            "command",
+                            shell="cc",
+                            value=["-o", "output"],
+                            req_file=requires[action_n],
+                        )
+
+                        start_connection(host, port, request)
+                        # TODO: receive the output file and do something with it here
 
                 except Exception:
                     print(
