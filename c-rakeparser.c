@@ -31,7 +31,7 @@ int main(int argc, char const *argv[])
     }
     //intiating words which will hold words
 
-    char **words = NULL;
+
     //procesing each line of the file
     while( fgets(line, sizeof line, dict) != NULL ) {  
         // printing each line in rakefile for debugging purposes
@@ -51,7 +51,7 @@ int main(int argc, char const *argv[])
         char* str = line;
 
         int nwords;
-        words   = strsplit(str, &nwords);
+        char **words = strsplit(str, &nwords);
 
 
          for(int w=0 ; w<nwords ; ++w) {
@@ -66,7 +66,6 @@ int main(int argc, char const *argv[])
 
 
     printf("%i\n\n", act_set_count);
-    printf("swaggyy\n %s\n", words[2]);
 
     printf("hello file parser\n"); 
     fclose(dict);

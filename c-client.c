@@ -86,10 +86,11 @@ int main(int argc, char *argv[])
     //trying to send a message--------
     //Send some data
 	// int message[3][2] = {{1,2},{3,4},{5,6}};
-	char* message = "well well well\n";
-    printf("%lu bytes to be sent\n", strlen(message));
+	int myarray[] = {1,2,3,4};
+	int* message = myarray;
+    printf("%lu bytes to be sent\n", sizeof(message));
 
-    int bytes_sent = send(sockfd , message , strlen(message) , 0);
+    int bytes_sent = send(sockfd , message , sizeof(message) , 0);
 
 	if(bytes_sent  <= 0){
 		puts("Send failed");
