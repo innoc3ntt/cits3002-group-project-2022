@@ -11,9 +11,9 @@ sel = selectors.DefaultSelector()
 random.seed(time.time())
 
 # TESTING SENDING BINARY FILE
-cwd = os.getcwd()
-test = os.path.join(cwd, "test", "test_output")
-file = open(test, "wb")
+# cwd = os.getcwd()
+# test = os.path.join(cwd, "test", "test_output")
+# file = open(test, "wb")
 
 
 
@@ -43,8 +43,8 @@ def service_connection(key, mask):
         if data.outb:
             time.sleep(random.randint(0, 5))
             print(f"Echoing {data.outb!r} to {data.addr}")
-            file.write(data.outb)
-            file.close()
+            # file.write(data.outb)
+            # file.close()
             sent = sock.send(data.outb)  # Should be ready to write
             data.outb = data.outb[sent:]
 

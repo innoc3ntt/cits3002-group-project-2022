@@ -209,11 +209,11 @@ def cc(host, port, filename):
 
 def main():
     host = "127.0.0.1"
-    port = 65432
+    port = 65431
 
-    port2 = 65431
+    # port2 = 65431
 
-    addresses = [(host, port), (host, port2)]
+    addresses = [(host, port)]
 
     query(addresses)
     send_file(host, port, "test.c")
