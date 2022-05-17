@@ -108,7 +108,7 @@ def event_loop(addresses):
     actionset1 = actions[0]
 
     # buffers to hold connection data per action
-    fd_all = []
+    queues = []
     requires = [[] for x in actions]
     queries = [[] for x in actions]
 
@@ -119,6 +119,8 @@ def event_loop(addresses):
         if action[-1][0] == "requires":
             for file in action[-1][1:]:
                 requires[index].append(file)
+            # remove the require for later processing
+            action[-1].pop()
 
         for address in addresses:
             # for each host!
@@ -126,7 +128,7 @@ def event_loop(addresses):
             fd = start_connection(host, port, query)
             fd_action.append(fd)
 
-        fd_all.append(fd_action)
+        queues.append(fd_action)
 
     try:
         while True:
@@ -145,11 +147,11 @@ def event_loop(addresses):
                     ):
                         # TODO: make a file/received type for libclient/libserver
                         # Process the server response to query request, if there is a response and type is query
-                        action_n = in_list(socket_no, fd_all)
+                        action_n = in_list(socket_no, queues)
 
                         if action_n != -1:
                             # If there is a socket being awaited on, remove it from queue and store result
-                            fd_all[action_n].remove(socket_no)
+                            queues[action_n].remove(socket_no)
                             queries[action_n].append(
                                 {
                                     "address": message.addr,
@@ -157,7 +159,7 @@ def event_loop(addresses):
                                 }
                             )
 
-                        if not fd_all[action_n]:
+                        if not queues[action_n]:
                             """
                             if for an action, not waiting for any more sockets to return
                             determine the lowest bid and send the relevant action
@@ -168,15 +170,29 @@ def event_loop(addresses):
                             print(f"{colorama.Fore.RED}Start connection to {minCost}")
                             host, port = minCost["address"]
 
+                            # create buffer to store socket no to be returned
+                            fd = []
+
                             for file in requires[action_n]:
                                 # if there are files required to be sent for the action, send them
                                 print(
                                     f"{colorama.Fore.BLUE}Sending file: {file} to {host} {port}"
                                 )
-                                send_file(host, port, file)
+
+                                fd.append(send_file(host, port, file))
+
+                            queues[action_n].append(fd)
+
+                            # TODO: Send multiple files!
 
                             # if no files or all the files have been sent
                             # TODO: keep track of when files have been sucessfully received
+                            if not queues[action_n]:
+                                # temporary loop to see again if queue is empty,
+                                # TODO: refactor this
+                                actions[1:][action_n]
+
+                                print(f"{colorama.Fore.GREEN}FINALLY RUN ACTUAL ACTION")
 
                 except Exception:
                     print(
