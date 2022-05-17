@@ -89,7 +89,7 @@ def in_list(c, classes):
 
 
 # first query
-def query(addresses):
+def event_loop(addresses):
     """
     Run for each action in an actionset to query all the connected servers.
     will return the minimum bid server and it's ip address
@@ -118,7 +118,7 @@ def query(addresses):
         fd_action = []
         if action[-1][0] == "requires":
             for file in action[-1][1:]:
-                requires[index].append()
+                requires[index].append(file)
 
         for address in addresses:
             # for each host!
@@ -139,16 +139,16 @@ def query(addresses):
                     message.process_events(mask)
 
                     socket_no = key.fd
-                    if (
-                        message.response
-                        and message.jsonheader["content-type"] == "text/json"
+                    if message.response and (
+                        message.jsonheader["content-type"] == "text/json"
+                        or message.jsonheader["content-type"] == "file/received"
                     ):
-                        # print("HELP!")
-
+                        # TODO: make a file/received type for libclient/libserver
+                        # Process the server response to query request, if there is a response and type is query
                         action_n = in_list(socket_no, fd_all)
-                        # print(f"In list:  + {which_list}")
 
                         if action_n != -1:
+                            # If there is a socket being awaited on, remove it from queue and store result
                             fd_all[action_n].remove(socket_no)
                             queries[action_n].append(
                                 {
@@ -160,21 +160,23 @@ def query(addresses):
                         if not fd_all[action_n]:
                             """
                             if for an action, not waiting for any more sockets to return
-                            determine the lowest bid and send the next request
+                            determine the lowest bid and send the relevant action
                             by starting a new connection with different request
-
                             """
 
                             minCost = min(queries[action_n], key=lambda x: x["cost"])
-                            print(f"{colorama.Fore.RED} Start connection to {minCost}")
+                            print(f"{colorama.Fore.RED}Start connection to {minCost}")
+                            host, port = minCost["address"]
 
-                            address = minCost["address"]
-                            host, port = address
+                            for file in requires[action_n]:
+                                # if there are files required to be sent for the action, send them
+                                print(
+                                    f"{colorama.Fore.BLUE}Sending file: {file} to {host} {port}"
+                                )
+                                send_file(host, port, file)
 
-                            print(f"address is {host} {port}")
-                            # host, port = address
-
-                            send_file(host, port, "test.c")
+                            # if no files or all the files have been sent
+                            # TODO: keep track of when files have been sucessfully received
 
                 except Exception:
                     print(
@@ -190,15 +192,24 @@ def query(addresses):
     # finally:
     #     sel.close()
 
-    return minCost
-
 
 def send_file(host, port, filename):
+    """
+    Send a file on a host
+
+        Parameters:
+            host (str): host ip address
+            port (int): port number
+            filename (str): file to send
+
+        Returns:
+            int : socket fd
+    """
     with open(filename, "rb") as f:
         data = f.read()
 
     request = create_request("file", data)
-    start_connection(host, port, request)
+    return start_connection(host, port, request)
 
 
 def cc(host, port, filename):
@@ -229,7 +240,6 @@ def cc(host, port, filename):
 
 
 def main():
-
     # parser(filename)
 
     # mock return of parser
@@ -240,10 +250,7 @@ def main():
 
     addresses = [(host, port), (host, port2), (host, port)]
 
-    query(addresses)
-    # send_file(host, port, "test.c")
-    # cc(host, port, "test.c")
-
+    event_loop(addresses)
     sel.close()
 
 
