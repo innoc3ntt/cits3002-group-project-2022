@@ -94,7 +94,7 @@ class Message:
 
         if request == "query":
             content = {"cost": random.randint(0, 100)}
-            print(f"{colorama.Fore.YELLOW}Sencding: {content}")
+            print(f"{colorama.Fore.YELLOW}Sending: {content}")
         else:
             pass
             # content = {"result": f"Error: invalid action '{action}'."}
@@ -109,13 +109,17 @@ class Message:
 
     def _create_response_binary_content(self):
         response = {
-            "content_bytes": b"First 10 bytes of request: " + self.request[:10],
+            "content_bytes": "test",
             "content_type": "binary",
             "content_encoding": "binary",
+            "action": "5",
         }
+        # FIXME: action 5???
+
         return response
 
     def _create_response_command(self):
+        action = self.request.get("action")
         shell = self.request.get("shell")
         value = self.request.get("value")
         files = self.request.get("files")
@@ -147,6 +151,7 @@ class Message:
             "content_bytes": data,
             "content_type": "command",
             "content_encoding": "binary",
+            "action": action,
         }
         return response
 
@@ -255,15 +260,17 @@ class Message:
     def create_response(self):
         if self.jsonheader["content-type"] == "text/json":
             response = self._create_response_json_content()
+            print("CREATE JSON")
         elif self.jsonheader["content-type"] == "binary":
             # Binary or unknown content-type
             response = self._create_response_binary_content()
-            print(f"{colorama.Fore.CYAN} create response binary")
+            print(f"{colorama.Fore.CYAN} create 'binary' response ")
         elif self.jsonheader["content-type"] == "command":
             # if a cc command is given
             response = self._create_response_command()
             print(f"{colorama.Fore.YELLOW}Create 'command' response")
 
         message = self._create_message(**response)
+        print(f"message is : {message}")
         self.response_created = True
         self._send_buffer += message

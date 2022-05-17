@@ -164,6 +164,7 @@ class Message:
                 "content_encoding": content_encoding,
                 "action": action,
             }
+
         message = self._create_message(**req)
         self._send_buffer += message
         self._request_queued = True
