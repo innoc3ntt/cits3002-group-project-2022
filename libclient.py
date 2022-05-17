@@ -13,10 +13,10 @@ class Message:
         self.request = request
         self._recv_buffer = b""
         self._send_buffer = b""
-        self._request_queued = False
-        self._jsonheader_len = None
-        self.jsonheader = None
-        self.response = None
+        self._request_queued = False #
+        self._jsonheader_len = None #
+        self.jsonheader = None #
+        self.response = None #
 
     def _set_selector_events_mask(self, mode):
         """Set selector to listen for events: mode is 'r', 'w', or 'rw'."""

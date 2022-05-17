@@ -10,15 +10,18 @@ extern  void    free_words(char **words);
 
 #define     BUFSIZE      10000
 #define     DICTIONARY  "/Users/hamishgillespie/Desktop/netWORKS/project/cits3002-group-project-2022/rakefile1"
+#define     MAX_HOSTNAME_LEN    20
 
+
+int PORT;
+int NUM_HOSTS;
 
 
 int main(int argc, char const *argv[])
 {
     //Initiating some variables 
     int act_set_count = 0; // the the number of actions sets
-    // int host_count; // the number of hostnames provided
-    // int port_Number; // the port number provided
+    char* HOSTS[MAX_HOSTNAME_LEN];
 
     //Initiating buffer and FILE
     char   line[BUFSIZ];
@@ -45,29 +48,40 @@ int main(int argc, char const *argv[])
             }
         }
 
-
-
-        //tring to get strsplit to work
-        char* str = line;
-
-        int nwords;
-        char **words = strsplit(str, &nwords);
-
-
-         for(int w=0 ; w<nwords ; ++w) {
-            printf("\t[%i]  \"%s\"\n", w, words[w]);
+        //if the line contains a port
+        if( strstr(line,"PORT") ){
+            printf("we got a config port line: %s", line);
+            int nwords;
+            char **words = strsplit(line, &nwords);
+            for(int w=0 ; w<nwords ; ++w) {
+                printf("\t[%i]  \"%s\"\n", w, words[w]);
+            }
+            PORT = atoi(words[2]);
         }
-        // free_words(words);
-        printf("\n");
 
+        //if the line contains hostnames, add host name to HOST array
+        if( strstr(line,"HOSTS") ){
+            int nwords;
+            char **words = strsplit(line, &nwords);
+            for(int w=0 ; w<nwords ; ++w) {
+                printf("\t[%i]  \"%s\"\n", w, words[w]);
+            }
+            for(int i =0; i < nwords -2 ; ++i){
+                HOSTS[i] = words[i+2];
+            }
+            NUM_HOSTS = nwords - 2;
+        }
 
-
+    }
+    printf("\n");
+    printf("the port is %i\n", PORT);
+    printf("these are the hosts:\n");
+    for(int i =0; i < NUM_HOSTS; i++){
+        printf("\t%s\n", HOSTS[i]);
     }
 
 
-    printf("%i\n\n", act_set_count);
-
-    printf("hello file parser\n"); 
+    // printf("%i\n\n", act_set_count);
     fclose(dict);
     return 0;
 }

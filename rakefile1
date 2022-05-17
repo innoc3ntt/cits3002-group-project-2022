@@ -1,4 +1,4 @@
-HOSTS = 127.0.0.1
+HOSTS = 127.0.0.1 12.12.12.12 123.43.0.1:8000 nameofhost
 PORT = 8000
 
 actionset1:
