@@ -84,7 +84,7 @@ class Message:
 
     def _process_response_binary_content(self):
         content = self.response
-        print(f"Got response: {content[:10]}")
+        print(f"{content!r}")
 
     def _process_response_command(self):
         content = self.response

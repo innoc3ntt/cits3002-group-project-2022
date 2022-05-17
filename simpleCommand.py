@@ -10,31 +10,40 @@ import libclient
 sel = selectors.DefaultSelector()
 
 
-def create_request(action, value=None, shell="echo", files=None):
-    if action == "query":
+def create_request(request, action=None, args=None, shell="echo", files=None):
+    """
+    Create a request to pass to start_connection
+    One of three types
+    - query
+    - command
+    - file
+
+    Parameters:
+        request (str): type of request, query, command or file
+        action (int): action number associated with
+        args: extra args to pass to a "command" request
+        shell: command to pass to shell, default echo
+        files: name of files to send
+
+    Returns:
+        (dict) A dictionary representing the request object
+    """
+    if request == "query":
         return dict(
             type="text/json",
             encoding="utf-8",
-            content=dict(action=action),
+            content=dict(request=request),
+            action=action,
         )
-    elif action == "remote":
-        return dict(
-            type="text/json",
-            encoding="utf-8",
-            content=dict(action=action, shell=shell, value=value, req_file=files),
-        )
-    elif action == "command":
+    elif request == "command":
         return dict(
             type="command",
             encoding="utf-8",
-            content=dict(action=action, shell=shell, value=value, req_file=files),
+            content=dict(request=request, shell=shell, args=args, files=files),
+            action=action,
         )
-    else:
-        return dict(
-            type="binary",
-            encoding="binary",
-            content=value,
-        )
+    elif request == "file":
+        return dict(type="binary", encoding="binary", content=args, action=action)
 
 
 def start_connection(host, port, request):
@@ -56,9 +65,14 @@ def main():
 
     filename = "test.c"
 
-    request = create_request(
-        "command", shell="cc", value=["-o", "output"], files=filename
-    )
+    with open(filename, "rb") as f:
+        data = f.read()
+
+    # request = create_request(
+    #     "command", shell="cc", value=["-o", "output"], files=filename
+    # )
+
+    request = create_request("file", args=data, action="5")
 
     start_connection(host, port, request)
 

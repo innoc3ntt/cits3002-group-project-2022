@@ -109,7 +109,7 @@ class Message:
 
     def _create_response_binary_content(self):
         response = {
-            "content_bytes": "test",
+            "content_bytes": b"First 10 bytes of request: " + self.request[:10],
             "content_type": "binary",
             "content_encoding": "binary",
             "action": "5",
@@ -260,17 +260,16 @@ class Message:
     def create_response(self):
         if self.jsonheader["content-type"] == "text/json":
             response = self._create_response_json_content()
-            print("CREATE JSON")
+            print(f"{colorama.Fore.CYAN} Created 'query/json' response ")
         elif self.jsonheader["content-type"] == "binary":
             # Binary or unknown content-type
             response = self._create_response_binary_content()
-            print(f"{colorama.Fore.CYAN} create 'binary' response ")
+            print(f"{colorama.Fore.CYAN} Created 'binary' response ")
         elif self.jsonheader["content-type"] == "command":
             # if a cc command is given
             response = self._create_response_command()
-            print(f"{colorama.Fore.YELLOW}Create 'command' response")
+            print(f"{colorama.Fore.YELLOW}Created 'command' response")
 
         message = self._create_message(**response)
-        print(f"message is : {message}")
         self.response_created = True
         self._send_buffer += message
