@@ -85,7 +85,8 @@ int main(int argc, char *argv[])
 
     //trying to send a message--------
     //Send some data
-	char* message = "THIS IS WORKING?\n";
+	// int message[3][2] = {{1,2},{3,4},{5,6}};
+	char* message = "well well well\n";
     printf("%lu bytes to be sent\n", strlen(message));
 
     int bytes_sent = send(sockfd , message , strlen(message) , 0);
