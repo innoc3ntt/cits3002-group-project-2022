@@ -30,7 +30,7 @@ def start_connections(host, port, num_conns):
 
 
 def service_connection(key, mask):
-    sock = key.fileobj a
+    sock = key.fileobj
     data = key.data
 
     if mask & selectors.EVENT_READ:
