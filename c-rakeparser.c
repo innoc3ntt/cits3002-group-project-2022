@@ -10,7 +10,7 @@ extern  char    **strsplit(const char *line, int *nwords);
 extern  void    free_words(char **words);
 
 #define     BUFSIZE      10000
-#define     DICTIONARY  "/Users/hamishgillespie/Desktop/netWORKS/project/cits3002-group-project-2022/rakefile3"
+#define     DICTIONARY  "/Users/hamishgillespie/Desktop/netWORKS/project/cits3002-group-project-2022/rakefile1"
 #define     MAX_HOSTNAME_LEN    20
 
 
@@ -23,6 +23,9 @@ int main(int argc, char const *argv[])
     //Initiating some variables 
     int act_set_count = 0; // the the number of actions sets
     char* HOSTS[MAX_HOSTNAME_LEN];
+
+    char* ACTIONS[100];
+    printf("%p\n", (void*) ACTIONS);
 
     //Initiating buffer and FILE
     char   line[BUFSIZ];
@@ -97,10 +100,7 @@ int main(int argc, char const *argv[])
     }
     //a variable to track what action set we are in (i.e. actionset1, actionset2 ...)
     int cur_act_set = -1;
-    // a variabl to track the action count in the current action set
-
     
-
     while( fgets(line, sizeof line, dict) != NULL ) {
 
         if(strstr(line,"#")) continue;
@@ -115,14 +115,39 @@ int main(int argc, char const *argv[])
         if(strstr(line,"    ") && !strstr(line,"        ")){
             action_counts[cur_act_set]++;
         }
-
-
-
     } 
     fclose(dict);
+    //Fillinf in the ActionSet Array------------------------
+
+    dict = fopen(DICTIONARY, "r");
+
+    //Attempting to open the file
+    if(dict == NULL) {
+        printf( "cannot open dictionary '%s'\n", DICTIONARY);
+        exit(EXIT_FAILURE);
+    }
+
+    while( fgets(line, sizeof line, dict) != NULL ) {
+        //actions contain one tab but not two tabs
+        if( strstr(line,"    ") && !strstr(line,"        ") ){
+            int nwords;
+            char **words = strsplit(line, &nwords);
+            for(int w=0 ; w<nwords ; ++w) {
+                printf("\t[%i]  \"%s\"\n", w, words[w]);
+            }
+            // for(int i =0; i < nwords -2 ; ++i){
+            //     ACTIONS[i] = words[i+2];
+            // }
+            // NUM_HOSTS = nwords - 2;
+        }
+
+        
+    }
 
 
 
+
+    //SUMMARY OF PARSED FILE---------------------------
     printf("\n\nFILE SUMMARY------------\n");
     printf("the port is %i\n", PORT);
     printf("these are the hosts:");
