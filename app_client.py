@@ -58,7 +58,7 @@ def start_connection(host, port, request):
     message = libclient.Message(sel, sock, addr, request)
     sel.register(sock, events, data=message)
 
-    return sock.fileno()
+    return message
 
 
 # if len(sys.argv) != 5:
@@ -68,10 +68,6 @@ def start_connection(host, port, request):
 # host, port = sys.argv[1], int(sys.argv[2])
 # action, value = sys.argv[3], sys.argv[4]
 # request = create_request(action, value)
-
-ports = [65432, 65431]
-
-results = []
 
 """
 in an action set, for each action, run a query to all hosts
@@ -111,7 +107,7 @@ def event_loop(addresses):
     actions = [
         "actionset1:",
         ["remote-cc", "test.c", ["requires", "test.c"]],
-        ["echo", "hello"],
+        # ["echo", "hello"],
     ]
 
     actionset1 = actions[0]
@@ -134,7 +130,7 @@ def event_loop(addresses):
         for address in addresses:
             # for each host!
             host, port = address
-            fd = start_connection(host, port, query)
+            fd = start_connection(host, port, query).sock.fileno()
             fd_action.append(fd)
 
         queues.append(fd_action)
@@ -170,6 +166,9 @@ def event_loop(addresses):
                                 }
                             )
 
+
+
+
                         if not queues[action_n]:
                             """
                             if for an action, not waiting for any more sockets to return
@@ -178,54 +177,82 @@ def event_loop(addresses):
                             """
 
                             minCost = min(queries[action_n], key=lambda x: x["cost"])
-                            print(f"{colorama.Fore.RED}Start connection to {minCost}")
+                            # print(f"{colorama.Fore.RED}Start connection to {minCost}")
                             host, port = minCost["address"]
 
                             # create buffer to store socket no to be returned
                             fd = []
 
-                            for file in requires[action_n]:
-                                # if there are files required to be sent for the action, send them
-                                print(
-                                    f"{colorama.Fore.BLUE}Sending file: {file} to {host} {port}"
+                            # for file in requires[action_n]:
+                            #     # if there are files required to be sent for the action, send them
+
+
+                            # TODO: Send multiple files!
+                            # send the first file
+                            msg = send_file(host, port, file, 2)
+                            fd.append(msg.sock.fileno())
+                            print(
+                                f"{colorama.Fore.BLUE}Sending file: {file} to {host} {port} {msg.sock}"
                                 )
-
-                                # TODO: Send multiple files!
-                                sock = send_file(host, port, file, action_n)
-                                fd.append(sock)
-
+                            # with open("test2.c", "rb") as f:
+                            #     data = f.read()
+                            # msg.request = create_request("file",args = data)
+                            # print("sending second file")
                             queues[action_n].extend(fd)
                             # if no files or all the files have been sent
                             # TODO: keep track of when files have been sucessfully received
 
+
+
+
+                    # the socket has returned
                     if message.response and (
                         message.jsonheader["content-type"] == "binary"
                     ):
-                        # the queue will currently hold all the connections which a file has been sent and awaiting a reply
-                        # which action is the returning socket for?
+
                         action_n = in_list(socket_no, queues)
 
-                        if action_n != -1:
-                            # If there is a socket being awaited on, remove it from queue
-                            queues[action_n].remove(socket_no)
 
-                        if not queues[action_n]:
-                            # temporary loop to see again if queue is empty,if so run the action
-                            # TODO: refactor this
-                            actions[1:][action_n]
+                        if queues[action_n]:
+                            # trying to load the same socket with a new request
+                            # TODO: add filename and number of files into header?
+                            with open("test2.c", "rb") as f:
+                                data = f.read()
+                            new_request = create_request("file",args = data)
 
-                            print(f"{colorama.Fore.GREEN}FINALLY RUN ACTUAL ACTION")
+                            reused_sock = msg.sock
+                            message = libclient.Message(sel, reused_sock, msg.addr, new_request)
 
-                            # mock assume that file sucessfully sent
-                            actions[1:][action_n]
+                            # msg._set_selector_events_mask("w")
+                            # msg._request_queued = False
 
-                            request = create_request(
-                                "command",
-                                shell="cc",
-                                args=["-o", "output"],
-                                files=requires[action_n],
-                                action=action_n,
-                            )
+                            print("sending second file")
+
+                        # the queue will currently hold all the connections which a file has been sent and awaiting a reply
+                        # which action is the returning socket for?
+
+
+                        # if action_n != -1:
+                        #     # If there is a socket being awaited on, remove it from queue
+                        #     queues[action_n].remove(socket_no)
+
+                        # if not queues[action_n]:
+                        #     # temporary loop to see again if queue is empty,if so run the action
+                        #     # TODO: refactor this
+                        #     actions[1:][action_n]
+
+                        #     print(f"{colorama.Fore.GREEN}FINALLY RUN ACTUAL ACTION")
+
+                        #     # mock assume that file sucessfully sent
+                        #     actions[1:][action_n]
+
+                        #     request = create_request(
+                        #         "command",
+                        #         shell="cc",
+                        #         args=["-o", "output"],
+                        #         files=requires[action_n],
+                        #         action=action_n,
+                        #     )
 
                             # start_connection(host, port, request)
                             # TODO: receive the output file and do something with it here
@@ -272,10 +299,9 @@ def main():
     # mock return of parser
     host = "127.0.0.1"
     port = 65432
-
     port2 = 65431
 
-    addresses = [(host, port), (host, port2), (host, port)]
+    addresses = [(host, port)]
 
     event_loop(addresses)
     sel.close()

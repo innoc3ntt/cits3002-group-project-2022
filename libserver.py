@@ -9,6 +9,7 @@ import struct
 import time
 import random
 import colorama
+import dotsi
 
 random.seed(time.time())
 colorama.init(autoreset=True)
@@ -63,6 +64,19 @@ class Message:
             else:
                 self._send_buffer = self._send_buffer[sent:]
                 # Close when the buffer is drained. The response has been sent.
+
+                if self.jsonheader['content_type'] == "binary":
+                    print("Keep connection alive")
+                    self._set_selector_events_mask("r")
+                    self._recv_buffer = b""
+                    self._send_buffer = b""
+                    self._jsonheader_len = None
+                    self.jsonheader = None
+                    self.request = None
+                    self.response_created = False
+
+                    return
+
                 if sent and not self._send_buffer:
                     self.close()
 
@@ -78,9 +92,9 @@ class Message:
     def _create_message(self, *, content_bytes, content_type, content_encoding, action):
         jsonheader = {
             "byteorder": sys.byteorder,
-            "content-type": content_type,
-            "content-encoding": content_encoding,
-            "content-length": len(content_bytes),
+            "content_type": content_type,
+            "content_encoding": content_encoding,
+            "content_length": len(content_bytes),
             "action": action,
         }
         jsonheader_bytes = self._json_encode(jsonheader, "utf-8")
@@ -210,15 +224,15 @@ class Message:
             self._recv_buffer = self._recv_buffer[hdrlen:]
             for reqhdr in (
                 "byteorder",
-                "content-length",
-                "content-type",
-                "content-encoding",
+                "content_length",
+                "content_type",
+                "content_encoding",
             ):
                 if reqhdr not in self.jsonheader:
                     raise ValueError(f"Missing required header '{reqhdr}'.")
 
     def process_request(self):
-        content_len = self.jsonheader["content-length"]
+        content_len = self.jsonheader["content_length"]
         if not len(self._recv_buffer) >= content_len:
             return
 
@@ -226,17 +240,17 @@ class Message:
         data = self._recv_buffer[:content_len]
 
         self._recv_buffer = self._recv_buffer[content_len:]
-        if self.jsonheader["content-type"] == "text/json":
+        if self.jsonheader["content_type"] == "text/json":
             # if json content
-            encoding = self.jsonheader["content-encoding"]
+            encoding = self.jsonheader["content_encoding"]
             self.request = self._json_decode(data, encoding)
             print(f"Received request {self.request!r} from {self.addr}")
 
-        elif self.jsonheader["content-type"] == "binary":
+        elif self.jsonheader["content_type"] == "binary":
             # File recieved
             self.request = data
             print(
-                f"Received {self.jsonheader['content-type']} "
+                f"Received {self.jsonheader['content_type']} "
                 f"request from {self.addr}"
                 f"{self.jsonheader!r}"
             )
@@ -248,10 +262,10 @@ class Message:
             with open("testfile", "wb") as f:
                 f.write(data)
 
-        elif self.jsonheader["content-type"] == "command":
+        elif self.jsonheader["content_type"] == "command":
             # if a command is given
-            # encoding = self.jsonheader["content-encoding"]
-            encoding = self.jsonheader["content-encoding"]
+            # encoding = self.jsonheader["content_encoding"]
+            encoding = self.jsonheader["content_encoding"]
             self.request = self._json_decode(data, encoding)
             print(f"{colorama.Fore.GREEN}Received command request!")
 
@@ -261,14 +275,14 @@ class Message:
         self._set_selector_events_mask("w")
 
     def create_response(self):
-        if self.jsonheader["content-type"] == "text/json":
+        if self.jsonheader["content_type"] == "text/json":
             response = self._create_response_json_content()
             print(f"{colorama.Fore.CYAN} Created 'query/json' response ")
-        elif self.jsonheader["content-type"] == "binary":
-            # Binary or unknown content-type
+        elif self.jsonheader["content_type"] == "binary":
+            # Binary or unknown content_type
             response = self._create_response_binary_content()
             print(f"{colorama.Fore.CYAN} Created 'binary' response ")
-        elif self.jsonheader["content-type"] == "command":
+        elif self.jsonheader["content_type"] == "command":
             # if a cc command is given
             response = self._create_response_command()
             print(f"{colorama.Fore.YELLOW}Created 'command' response")

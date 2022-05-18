@@ -4,6 +4,8 @@ import selectors
 import traceback
 import os
 import colorama
+import dotsi
+from soupsieve import select
 
 import libclient
 
@@ -59,6 +61,11 @@ def start_connection(host, port, request):
     return sock.fileno()
 
 
+filename = "test2.c"
+
+with open(filename, "rb") as f:
+    data2 = f.read()
+
 def main():
     host = "127.0.0.1"
     port = 65432
@@ -83,6 +90,13 @@ def main():
                 message = key.data
                 try:
                     message.process_events(mask)
+
+                    if message.jsonheader != None:
+                        if (message.jsonheader["content_type"] == "binary"):
+                            new_request = create_request("file",args=data2, action="5" )
+                            new_message = libclient.Message(sel, key.fileobj,message.addr,new_request)
+                            print(key.fileobj)
+                            sel.modify(key.fileobj,events=selectors.EVENT_WRITE,data=new_message)
                 except Exception:
                     print(
                         f"Main: Error: Exception for {message.addr}:\n"
