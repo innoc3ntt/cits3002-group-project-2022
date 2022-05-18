@@ -1,12 +1,21 @@
 HOSTS = 127.0.0.1 12.12.12.12 123.43.0.1:8000 nameofhost
 PORT = 8000
 
+actionset0:
+    echo starting actionset0
+    echo action1!
+        requires swag.h
+    echo about to compile stuff
+    cc -o compile swag.c
+        requires swag.h
+
 actionset1:
     echo starting actionset1
-    echo action2!
 
 actionset2:
     echo starting actionset2
+        requires swag.h
+    echo another action
 
 actionset3:
-    echo starting actionset3
+    echo more action sets
