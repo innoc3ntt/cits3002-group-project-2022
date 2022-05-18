@@ -65,14 +65,13 @@ class Message:
         tiow.close()
         return obj
 
-    def _create_message(self, *, content_bytes, content_type, content_encoding, action):
+    def _create_message(self, header, content_bytes):
         jsonheader = dotsi.Dict({
             "byteorder": sys.byteorder,
-            "content_type": content_type,
-            "content_encoding": content_encoding,
-            "action": action,
             "content_length": len(content_bytes),
         })
+        jsonheader.update(header)
+        print(jsonheader)
         jsonheader_bytes = self._json_encode(jsonheader, "utf-8")
         message_hdr = struct.pack(">H", len(jsonheader_bytes))
         message = message_hdr + jsonheader_bytes + content_bytes
@@ -145,28 +144,30 @@ class Message:
         content_encoding = self.request["encoding"]
         action = self.request["action"]
         if content_type == "text/json":
+            content_bytes= self._json_encode(content, content_encoding)
             req = {
-                "content_bytes": self._json_encode(content, content_encoding),
+               
                 "content_type": content_type,
                 "content_encoding": content_encoding,
                 "action": action,
             }
         elif content_type == "command":
+            content_bytes: self._json_encode(content, content_encoding)
             req = {
-                "content_bytes": self._json_encode(content, content_encoding),
                 "content_type": content_type,
                 "content_encoding": content_encoding,
                 "action": action,
             }
         else:
+            content_bytes= content
             req = {
-                "content_bytes": content,
+
                 "content_type": content_type,
                 "content_encoding": content_encoding,
                 "action": action,
             }
 
-        message = self._create_message(**req)
+        message = self._create_message(req, content_bytes)
         self._send_buffer += message
         self._request_queued = True
 
