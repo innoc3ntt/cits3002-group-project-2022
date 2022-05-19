@@ -87,14 +87,25 @@ def send_file(filename, address, sel, socket=None):
         sel.modify(socket, events=selectors.EVENT_WRITE, data=message)
 
 
+def reuse_socket(request, address, sel, socket=None):
+    host, port = address
+
+    if socket is None:
+        start_connection(host, port, request)
+    else:
+        message = libclient.Message(sel, socket, address, request)
+        sel.modify(socket, events=selectors.EVENT_WRITE, data=message)
+
+
 def main():
     host = "127.0.0.1"
     port = 65432
 
-    # request = create_request(
-    #     "command", shell="cc", value=["-o", "output"], files=filename
-    # )
     files_to_send = ["test.c", "test2.c"]
+
+    request_cc = create_request(
+        "command", shell="cc", args=["-o", "output_file"], files=files_to_send
+    )
 
     # start the action by sending requires
     send_file(filename="test.c", address=(host, port), sel=sel, socket=None)
@@ -111,18 +122,24 @@ def main():
                         message.response
                         and message.jsonheader["content_type"] == "binary"
                     ):
-                        # if receive a binary response from server
+                        # if receive a binary response from server, means file succesfully received
                         if files_to_send:
                             # if there are still files to be sent
+                            file = files_to_send.pop(0)
                             send_file(
-                                filename="test2.c",
+                                filename=file,
                                 socket=key.fileobj,
                                 address=message.addr,
                                 sel=sel,
                             )
-                            files_to_send.pop(0)
                         else:
-                            message.close()
+                            # all files sent, can send the command now
+                            reuse_socket(
+                                request=request_cc,
+                                socket=key.fileobj,
+                                address=message.addr,
+                                sel=sel,
+                            )
                 except Exception:
                     print(
                         f"Main: Error: Exception for {message.addr}:\n"

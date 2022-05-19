@@ -57,11 +57,13 @@ class Message:
         request = self.request.type
         if self._send_buffer:
             if request == "binary":
-                print(f"Sending {self.request.filename} to {self.addr}")
+                print(f"<<< Sending {self.request.filename} to {self.addr}")
             elif request == "command":
-                print(f"Sending {self.request.content.shell} command to {self.addr}")
+                print(
+                    f"<<< Sending {self.request.content.shell} command to {self.addr}"
+                )
             else:
-                print(f"Sending {self._send_buffer!r} to {self.addr}")
+                print(f"<<< Sending {self._send_buffer!r} to {self.addr}")
             try:
                 # Should be ready to write
                 sent = self.sock.send(self._send_buffer)
@@ -100,14 +102,14 @@ class Message:
 
     def _process_response_binary_content(self):
         content = self.response
-        print(f"{content!r}")
+        print(f">>> {content!r}")
 
     def _process_response_command(self):
         # compile file sent by server!
 
         content = self.response
         filename = self.jsonheader.filename
-        print(f"Received {filename} from server")
+        print(f">>> Received {filename} from server")
         with open(filename, "wb") as f:
             f.write(content)
 
@@ -222,7 +224,7 @@ class Message:
         if self.jsonheader.content_type == "text/json":
             encoding = self.jsonheader["content_encoding"]
             self.response = self._json_decode(data, encoding)
-            print(f"Received response {self.response!r} from {self.addr}")
+            print(f">>> Received response {self.response!r} from {self.addr}")
             self._process_response_json_content()
 
             self.close()
@@ -230,7 +232,7 @@ class Message:
         elif self.jsonheader.content_type == "command":
             self.response = data
             print(
-                f"Received {self.jsonheader['content_type']} "
+                f">>> Received {self.jsonheader['content_type']} "
                 f"response from {self.addr}"
             )
             self._process_response_command()
@@ -239,7 +241,8 @@ class Message:
             # Binary or unknown content_type
             self.response = data
             print(
-                f"Received {self.jsonheader.content_type} " f"response from {self.addr}"
+                f">>> Received {self.jsonheader.content_type} "
+                f"response from {self.addr}"
             )
             self._process_response_binary_content()
         # Close when response has been processed

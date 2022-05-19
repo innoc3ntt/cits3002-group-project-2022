@@ -11,6 +11,9 @@ import random
 import colorama
 import dotsi
 import tempfile
+import shutil
+import logging
+from utils import get_latest_file
 
 random.seed(time.time())
 colorama.init(autoreset=True)
@@ -124,13 +127,10 @@ class Message:
         cmd.extend(args)
         cmd.extend(files)
 
-        # FIXME:uncomment when testing full
-        # if self.directory is not None:
-        #     directory = self.directory
-        # else:
-        #     directory = os.getcwd()
-
-        directory = os.path.join(os.getcwd(), "test")
+        if self.directory is not None:
+            directory = self.directory
+        else:
+            directory = os.getcwd()
 
         print(f"{colorama.Fore.RED}CMD: {cmd}")
 
@@ -144,36 +144,27 @@ class Message:
                     "exit_status": process.returncode,
                 }
             )
-
-            print(f"Output: {output.output}, exit_status:{output.exit_status}")
+            print(f"Output: {output.output}, exit_status: {output.exit_status}")
         except Exception as exc:
             print(exc)
+            logging.excption("Subprocess exited non-zero")
 
         # get compiled file which is presumably the newest file
         latest_file = self.get_latest_file(directory)
         filename = os.path.basename(latest_file)
+
         # send back the compiled file
         with open(latest_file, "rb") as f:
             data = f.read()
 
         output.update({"filename": filename})
 
+        # cleanup tmp dir
+        if "tmp" in self.directory:
+            print(f"=== Removing ${self.directory} ===")
+            shutil.rmtree(self.directory)
+
         return (data, output)
-
-    def get_latest_file(self, directory):
-
-        file_list = [
-            os.path.join(directory, f)
-            for f in os.listdir(directory)
-            if os.path.isfile(os.path.join(directory, f))
-        ]
-
-        file = max(file_list, key=os.path.getctime)
-
-        base_file = os.path.basename(file)
-        print(f"Latest file is: {base_file}")
-
-        return file
 
     def process_events(self, mask):
         if mask & selectors.EVENT_READ:
