@@ -125,10 +125,11 @@ def send_file(filename, address, sel, socket=None):
     )
 
     if socket is None:
-        start_connection(sel, host, port, request)
+        return start_connection(sel, host, port, request)
     else:
         message = libclient.Message(sel, socket, address, request)
         sel.modify(socket, events=selectors.EVENT_WRITE, data=message)
+        return socket.fileno()
 
 
 def send_file_request(filename):

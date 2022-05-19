@@ -26,7 +26,7 @@ class Message(MessageAll):
                     f"<<< Sending {self.request.content.command} command to {self.addr}"
                 )
             else:
-                print(f"<<< Sending {self._send_buffer!r} to {self.addr}")
+                print(f"<<< Sending {self.request.content} to {self.addr}")
             try:
                 # Should be ready to write
                 sent = self.sock.send(self._send_buffer)
@@ -183,8 +183,6 @@ class Message(MessageAll):
                 f"response from {self.addr}"
             )
             self._process_response_binary_content()
-        # Close when response has been processed
-        # FIXME: self.close()
 
     def process_jsonheader(self):
         hdrlen = self._jsonheader_len
