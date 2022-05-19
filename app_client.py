@@ -4,16 +4,34 @@ import sys
 import colorama, dotsi
 from parser import parse_file
 
-from utils import (
+from libclient import (
     create_request,
-    send_file_request,
+    reuse_connection,
     start_connection,
     in_list,
     query,
     send_file,
 )
 
+logging.basicConfig(filename="logs/all.log", filemode="w", level=logging.DEBUG)
+logger = logging.getLogger("client")
+formatter = logging.Formatter(
+    "%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"
+)
 
+
+fh = logging.FileHandler(filename="logs/client.log", mode="w")
+fh.setLevel(logging.DEBUG)
+fh.setFormatter(formatter)
+logger.addHandler(fh)
+
+
+ch = logging.StreamHandler()
+ch.setLevel(logging.DEBUG)
+ch.setFormatter(formatter)
+logger.addHandler(ch)
+
+logger.info("=================STARTING LOG========================")
 colorama.init(autoreset=True)
 
 
@@ -28,7 +46,6 @@ def event_loop(addresses, actions):
     """
     Run for each action in an actionset to query all the connected servers.
     will return the minimum bid server and it's ip address
-
     """
     sel = selectors.DefaultSelector()
 
@@ -40,19 +57,22 @@ def event_loop(addresses, actions):
     again = [-1 for x in actions]
 
     for index, action in enumerate(actions):
-
+        # for each action, get required files in a buffer and send a query to all hosts
         fd_action = []
         if action[-1][0] == "requires":
+            # find all the files required and put them in a buffer
             for file in action[-1][1:]:
                 requires[index].append(file)
-            # remove the requires for later processing
+            # remove the empty require
             action.pop()
 
+        logger.info(f"Querying cost for action: {index}")
         for address in addresses:
-            # for each host!
+            # for each host, query the cost for an action
             host, port = address
             fd_action.append(query(sel, host, port))
 
+        # add to a queue, the socket_fd's used for each action
         queues.append(fd_action)
 
     try:
@@ -84,8 +104,6 @@ def event_loop(addresses, actions):
                             if not queues[action_n]:
                                 # if after dequeing, that was the last socket being awaited on for queries, ready to send next
                                 running_socket[action_n] = 1
-                        else:
-                            continue
 
                     if again.count(socket_no) > 0:
                         action_num = again.index(socket_no)
@@ -114,6 +132,9 @@ def event_loop(addresses, actions):
                             host, port = minCost.address
 
                             file = requires[action_num].pop(0)
+                            logger.info(
+                                f"Starting action: {action_num} with lowest cost of {minCost.cost} to address {minCost.address}"
+                            )
                             monitor_socket = send_file(
                                 filename=file,
                                 address=(host, port),
@@ -132,8 +153,7 @@ def event_loop(addresses, actions):
                             if there are any additional files to be sent, update the message
                             """
                             file = requires[action_num].pop(0)
-                            new_request = send_file_request(file)
-                            message.update_request(new_request)
+                            reuse_connection(message, filename=file)
                         elif (
                             message.jsonheader.content_type == "binary"
                             and not requires[action_num]
@@ -143,12 +163,12 @@ def event_loop(addresses, actions):
                             temp = action_to_do[0].split("-")
                             if "remote" in temp:
                                 action_to_do[0] = temp[1]
+                                reuse_connection(
+                                    message,
+                                    command=action_to_do,
+                                    keep_connection_alive=False,
+                                )
 
-                            update_request = create_request(
-                                "command",
-                                command=action_to_do,
-                            )
-                            message.update_request(update_request)
                             running_socket[action_num] = -1
                         elif (
                             not requires[action_num]
@@ -162,12 +182,10 @@ def event_loop(addresses, actions):
                             if "remote" in temp:
                                 action_to_do[0] = temp[1]
 
-                            print(
-                                f"{colorama.Fore.MAGENTA}ACTION TO DO IS: {action_to_do}"
-                            )
-
                             command_request = create_request(
-                                "command", command=action_to_do
+                                "command",
+                                command=action_to_do,
+                                keep_connection_alive=False,
                             )
                             start_connection(sel, host, port, command_request)
                             running_socket[action_num] = -1
@@ -193,13 +211,14 @@ def main():
 
     addresses, action_sets = parse_file(sys.argv[1])
 
-    for action_set in action_sets:
+    for index, action_set in enumerate(action_sets):
+        logger.info(f"Starting actionset: {index}")
         actions = action_set[1:]
         try:
             event_loop(addresses, actions)
         except RuntimeError as e:
-            # logging.exception(e)
-            raise RuntimeError("FUCK!")
+            logger.exception(e)
+            raise RuntimeError(e)
 
 
 if __name__ == "__main__":

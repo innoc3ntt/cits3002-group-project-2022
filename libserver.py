@@ -2,11 +2,25 @@ import os, subprocess, sys, struct, time, random, tempfile, shutil, logging
 
 import dotsi, colorama
 
-from utils import get_latest_file
 from liball import MessageAll
 
 random.seed(time.time())
 colorama.init(autoreset=True)
+
+
+def get_latest_file(directory):
+    file_list = [
+        os.path.join(directory, f)
+        for f in os.listdir(directory)
+        if os.path.isfile(os.path.join(directory, f))
+    ]
+
+    file = max(file_list, key=os.path.getctime)
+
+    base_file = os.path.basename(file)
+    logging.debug(f"Latest file is: {base_file}")
+
+    return file
 
 
 class Message(MessageAll):
@@ -63,6 +77,7 @@ class Message(MessageAll):
         request = self.request.request
 
         if request == "query":
+            time.sleep(random.randint(0, 5))
             content = {"cost": random.randint(0, 100)}
             print(f"{colorama.Fore.YELLOW}Sending: {content}")
         else:

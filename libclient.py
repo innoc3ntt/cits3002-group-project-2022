@@ -1,8 +1,142 @@
-import sys, selectors, struct
+import sys, selectors, struct, socket, os, logging
+
 
 import dotsi
 
+import libclient
 from liball import MessageAll
+
+logger = logging.getLogger("client")
+
+
+def in_list(c, classes):
+    """
+    Convenience function to find which list in a 2D list an integer is in
+
+        Parameters:
+            c (int): The integer to look for
+            classes list[int]: 2D list to search in
+
+        Returns:
+            i (int): index of list containing element, -1 if not found
+    """
+    for i, sublist in enumerate(classes):
+        if c in sublist:
+            return i
+    return -1
+
+
+def start_connection(sel, host, port, request):
+    """
+    Returns:
+        (int) socket number
+
+    Parameters:
+        sel (selector):
+        host (str): ip address
+        port (int): port number
+        request (dict): dictionary
+    """
+    addr = (host, port)
+    logger.info(f">>> Starting connection to {addr}")
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setblocking(False)
+    sock.connect_ex(addr)
+    events = selectors.EVENT_READ | selectors.EVENT_WRITE
+    message = libclient.Message(sel, sock, addr, request)
+    sel.register(sock, events, data=message)
+
+    return sock.fileno()
+
+
+def reuse_connection(message, filename=None, command=None, keep_connection_alive=True):
+    if filename:
+        data = get_file_data(filename)
+        request = create_request(
+            "file",
+            data=data,
+            filename=filename,
+            keep_connection_alive=keep_connection_alive,
+        )
+    else:
+        request = create_request("command", command=command)
+
+    message.update_request(request)
+
+
+def query(sel, host, port):
+    """Wrapper around start_connection to be called for each action to each host"""
+    query = create_request("query")
+    return start_connection(sel, host, port, query)
+
+
+def create_request(
+    request,
+    command=None,
+    data=None,
+    filename=None,
+    keep_connection_alive=False,
+):
+    """
+    Create a request to pass to start_connection
+    One of three types
+    - query
+    - command
+    - file
+
+    Parameters:
+        request (str): type of request, query, command or file
+        action (int): action number associated with
+        args: extra args to pass to a "command" request
+        shell: command to pass to shell, default echo
+        files: name of files to send
+
+    Returns:
+        (dict) A dictionary representing the request object
+    """
+    if request == "query":
+        return dotsi.Dict(
+            type="text/json",
+            encoding="utf-8",
+            content=dict(request=request),
+        )
+    elif request == "command":
+        return dotsi.Dict(
+            type="command",
+            encoding="utf-8",
+            content=dict(request=request, command=command),
+        )
+    elif request == "file":
+        return dotsi.Dict(
+            type="binary",
+            encoding="binary",
+            content=data,
+            filename=filename,
+            keep_connection_alive=keep_connection_alive,
+        )
+    else:
+        raise RuntimeError("Invalid request created!")
+
+
+def send_file(filename, address, sel, socket=None):
+    host, port = address
+    data = get_file_data(filename)
+    request = create_request(
+        "file", data=data, filename=filename, keep_connection_alive=True
+    )
+
+    if socket is None:
+        return start_connection(sel, host, port, request)
+    else:
+        message = libclient.Message(sel, socket, address, request)
+        sel.modify(socket, events=selectors.EVENT_WRITE, data=message)
+        return socket.fileno()
+
+
+def get_file_data(filename):
+    with open(filename, "rb") as f:
+        data = f.read()
+    return data
 
 
 class Message(MessageAll):
@@ -20,13 +154,13 @@ class Message(MessageAll):
         request = self.request.type
         if self._send_buffer:
             if request == "binary":
-                print(f"<<< Sending {self.request.filename} to {self.addr}")
+                logger.info(f"<<< Sending {self.request.filename} to {self.addr}")
             elif request == "command":
-                print(
+                logger.info(
                     f"<<< Sending {self.request.content.command} command to {self.addr}"
                 )
             else:
-                print(f"<<< Sending {self.request.content} to {self.addr}")
+                logger.info(f"<<< Sending {self.request.content} to {self.addr}")
             try:
                 # Should be ready to write
                 sent = self.sock.send(self._send_buffer)
@@ -49,25 +183,18 @@ class Message(MessageAll):
         message = message_hdr + jsonheader_bytes + content_bytes
         return message
 
-    def _process_response_json_content(self):
-        content = self.response
-        cost = content.get("cost")
-        print(f"Got cost: {cost}")
-
-    def _process_response_binary_content(self):
-        content = self.response
-        print(f">>> {content!r}")
-
     def _process_response_command(self):
         # compile file sent by server!
-
-        content = self.response
         exit_status = self.jsonheader.exit_status
         filename = self.jsonheader.filename
-        print(f">>> Received file: {filename} from server")
-        print(f">>> Subprocess exited {exit_status}")
+        logger.info(f">>> Received file: {filename} from {self.addr}")
+        if exit_status == 0:
+            logger.info(f">>> Subprocess exited succesfully")
+        else:
+            logger.error(f">>> Subprocess exited non-zero")
+
         with open(filename, "wb") as f:
-            f.write(content)
+            f.write(self.response)
 
     def read(self):
         self._read()
@@ -162,15 +289,13 @@ class Message(MessageAll):
             # if json content
             encoding = self.jsonheader.content_encoding
             self.response = self._json_decode(data, encoding)
-            print(f">>> Received response {self.response!r} from {self.addr}")
-            self._process_response_json_content()
-
+            logger.info(f">>> Received response {self.response!r} from {self.addr}")
             self.close()
 
         elif self.jsonheader.content_type == "command":
             self.response = data
-            print(
-                f">>> Received {self.jsonheader['content_type']} "
+            logger.info(
+                f">>> Received {self.jsonheader.content_type} "
                 f"response from {self.addr}"
             )
             self._process_response_command()
@@ -178,11 +303,24 @@ class Message(MessageAll):
         else:
             # Binary or unknown content_type
             self.response = data
-            print(
-                f">>> Received {self.jsonheader.content_type} "
-                f"response from {self.addr}"
+            logger.info(
+                f">>> Received {self.jsonheader.content_type} | {self.response} response from {self.addr}"
             )
-            self._process_response_binary_content()
+
+    def close(self):
+        logger.info(f"=== Closing connection to {self.addr} ===")
+        try:
+            self.selector.unregister(self.sock)
+        except Exception as e:
+            print(f"Error: selector.unregister() exception for " f"{self.addr}: {e!r}")
+
+        try:
+            self.sock.close()
+        except OSError as e:
+            logger.error(f"Error: socket.close() exception for {self.addr}: {e!r}")
+        finally:
+            # Delete reference to socket object for garbage collection
+            self.sock = None
 
     def process_jsonheader(self):
         hdrlen = self._jsonheader_len
