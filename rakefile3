@@ -1,6 +1,14 @@
-HOSTS = 127.0.0.1
+HOSTS = 127.0.0.1 127.0.0.1:5000 127.0.0.1:4000
 PORT = 8000
 
 actionset1: 
-    remote-cc test.c
-        requires test.c
+    remote-cc test.c -o output1 test1.c test2.c
+        requires test.c test2.c
+    remote-cc -o output2 test3.c
+        requires test3.c
+
+actionset2:
+    remote-cc test.c -o output1 test1.c test2.c
+        requires test.c test2.c
+    remote-cc -o output3 test3.c
+        requires test3.c
