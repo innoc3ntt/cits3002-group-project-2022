@@ -23,7 +23,7 @@ class Message(MessageAll):
                 print(f"<<< Sending {self.request.filename} to {self.addr}")
             elif request == "command":
                 print(
-                    f"<<< Sending {self.request.content.shell} command to {self.addr}"
+                    f"<<< Sending {self.request.content.command} command to {self.addr}"
                 )
             else:
                 print(f"<<< Sending {self._send_buffer!r} to {self.addr}")
@@ -160,7 +160,7 @@ class Message(MessageAll):
 
         if self.jsonheader.content_type == "text/json":
             # if json content
-            encoding = self.jsonheader["content_encoding"]
+            encoding = self.jsonheader.content_encoding
             self.response = self._json_decode(data, encoding)
             print(f">>> Received response {self.response!r} from {self.addr}")
             self._process_response_json_content()
@@ -185,3 +185,17 @@ class Message(MessageAll):
             self._process_response_binary_content()
         # Close when response has been processed
         # FIXME: self.close()
+
+    def process_jsonheader(self):
+        hdrlen = self._jsonheader_len
+        if len(self._recv_buffer) >= hdrlen:
+            self.jsonheader = self._json_decode(self._recv_buffer[:hdrlen], "utf-8")
+            self._recv_buffer = self._recv_buffer[hdrlen:]
+            for reqhdr in (
+                "byteorder",
+                "content_length",
+                "content_type",
+                "content_encoding",
+            ):
+                if reqhdr not in self.jsonheader:
+                    raise ValueError(f"Missing required header '{reqhdr}'.")

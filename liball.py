@@ -74,17 +74,3 @@ class MessageAll:
         if len(self._recv_buffer) >= hdrlen:
             self._jsonheader_len = struct.unpack(">H", self._recv_buffer[:hdrlen])[0]
             self._recv_buffer = self._recv_buffer[hdrlen:]
-
-    def process_jsonheader(self):
-        hdrlen = self._jsonheader_len
-        if len(self._recv_buffer) >= hdrlen:
-            self.jsonheader = self._json_decode(self._recv_buffer[:hdrlen], "utf-8")
-            self._recv_buffer = self._recv_buffer[hdrlen:]
-            for reqhdr in (
-                "byteorder",
-                "content_length",
-                "content_type",
-                "content_encoding",
-            ):
-                if reqhdr not in self.jsonheader:
-                    raise ValueError(f"Missing required header '{reqhdr}'.")

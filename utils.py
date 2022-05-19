@@ -73,10 +73,7 @@ def get_latest_file(directory):
 
 def create_request(
     request,
-    action=None,
-    args=None,
-    shell=None,
-    files=None,
+    command=None,
     data=None,
     filename=None,
     keep_connection_alive=False,
@@ -108,7 +105,7 @@ def create_request(
         return dotsi.Dict(
             type="command",
             encoding="utf-8",
-            content=dict(request=request, shell=shell, args=args, files=files),
+            content=dict(request=request, command=command),
         )
     elif request == "file":
         return dotsi.Dict(

@@ -55,6 +55,7 @@ class Message(MessageAll):
         jsonheader.update(header)
         jsonheader_bytes = self._json_encode(jsonheader, "utf-8")
         message_hdr = struct.pack(">H", len(jsonheader_bytes))
+        print(f"LENGTH OF JSONHEADER: {len(jsonheader_bytes)}")
         message = message_hdr + jsonheader_bytes + content_bytes
         return message
 
@@ -71,22 +72,18 @@ class Message(MessageAll):
 
     def _create_response_command(self):
         self.request = dotsi.fy(self.request)
-        shell = self.request.shell
-        args = self.request.args
-        files = self.request.files
-
-        cmd = [shell]
-        cmd.extend(args)
-        cmd.extend(files)
+        command = self.request.command
 
         if self.directory is not None:
             directory = self.directory
         else:
             directory = os.getcwd()
 
-        print(f"{colorama.Fore.RED}Running CMD: {cmd}")
+        print(f"{colorama.Fore.RED}Running CMD: {command}")
 
-        process = subprocess.run(cmd, check=True, capture_output=True, cwd=directory)
+        process = subprocess.run(
+            command, check=True, capture_output=True, cwd=directory
+        )
 
         output = dotsi.Dict(
             {
@@ -225,3 +222,17 @@ class Message(MessageAll):
         message = self._create_message(header, content_bytes)
         self.response_created = True
         self._send_buffer += message
+
+    def process_jsonheader(self):
+        hdrlen = self._jsonheader_len
+        if len(self._recv_buffer) >= hdrlen:
+            self.jsonheader = self._json_decode(self._recv_buffer[:hdrlen], "utf-8")
+            self._recv_buffer = self._recv_buffer[hdrlen:]
+            for reqhdr in (
+                "byteorder",
+                "content_length",
+                "content_type",
+                "content_encoding",
+            ):
+                if reqhdr not in self.jsonheader:
+                    raise ValueError(f"Missing required header '{reqhdr}'.")

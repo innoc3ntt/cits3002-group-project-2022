@@ -5,7 +5,14 @@ import traceback
 import colorama, dotsi
 
 import libclient
-from utils import create_request, start_connection, in_list, query
+from utils import (
+    create_request,
+    send_file_request,
+    start_connection,
+    in_list,
+    query,
+    send_file,
+)
 
 
 sel = selectors.DefaultSelector()
@@ -26,6 +33,12 @@ collect the returned costs, send a request to remote host,
 which may involve sending a file for each action and receiving back a file from each host
 """
 
+files_to_send = ["test.c", "test2.c"]
+
+
+# request_cc = create_request(
+#     "command", shell="cc", args=["-o", "output_file"], files=files_to_send
+# )
 
 # first query
 def event_loop(addresses):
@@ -38,7 +51,14 @@ def event_loop(addresses):
     # mock the actionset input here
     actions = [
         "actionset1:",
-        ["remote-cc", "test.c", ["requires", "test.c"]],
+        [
+            "remote-cc",
+            "-o",
+            "my_output",
+            "test.c",
+            "test2.c",
+            ["requires", "test.c", "test2.c"],
+        ],
         # ["echo", "hello"],
     ]
 
@@ -46,8 +66,9 @@ def event_loop(addresses):
 
     # buffers to hold connection data per action
     queues = []
-    requires = [[] for x in actions]
-    queries = [[] for x in actions]
+    requires = [[] for x in actions[1:]]
+    queries = [[] for x in actions[1:]]
+    running_socket = [-1 for x in actions[1:]]
 
     # mock actionset 1 only first
     for index, action in enumerate(actions[1:]):
@@ -77,109 +98,102 @@ def event_loop(addresses):
                     message.process_events(mask)
 
                     socket_no = key.fd
+                    action_n = in_list(socket_no, queues)
                     if message.response and (
                         message.jsonheader.content_type == "text/json"
                     ):
-                        # TODO: make a file/received type for libclient/libserver
+
                         # Process the server response to query request, if there is a response and type is query
-                        action_n = in_list(socket_no, queues)
 
                         if action_n != -1:
                             # If there is a socket being awaited on, remove it from queue and store result
                             queues[action_n].remove(socket_no)
-
-                            # print(f"{colorama.Fore.CYAN} Received {message} ")
-
                             queries[action_n].append(
                                 {
                                     "address": message.addr,
                                     "cost": message.response["cost"],
                                 }
                             )
+                            if not queues[action_n]:
+                                running_socket[action_n] = socket_no
 
-                    #     if not queues[action_n]:
-                    #         """
-                    #         if for an action, not waiting for any more sockets to return
-                    #         determine the lowest bid and send the relevant action
-                    #         by starting a new connection with different request
-                    #         """
+                    if running_socket.count(socket_no) > 0:
+                        action_num = running_socket.index(socket_no)
+                        if not queues[action_num]:
+                            """
+                            if for an action, not waiting for any more sockets to return from query request
 
-                    #         minCost = min(queries[action_n], key=lambda x: x["cost"])
-                    #         # print(f"{colorama.Fore.RED}Start connection to {minCost}")
-                    #         host, port = minCost["address"]
+                            determine the lowest bid and send the relevant action
+                            by starting a new connection with different request
+                            """
 
-                    #         # create buffer to store socket no to be returned
-                    #         fd = []
+                            if (
+                                message.response
+                                and requires[action_num]
+                                and message.jsonheader.content_type == "text/json"
+                            ):
+                                # if its a query response coming back, initiate file transfers
+                                minCost = dotsi.fy(
+                                    min(queries[action_num], key=lambda x: x["cost"])
+                                )
+                                host, port = minCost.address
 
-                    #         # for file in requires[action_n]:
-                    #         #     # if there are files required to be sent for the action, send them
+                                file = requires[action_num].pop(0)
+                                send_file(
+                                    filename=file,
+                                    address=(host, port),
+                                    sel=sel,
+                                    socket=None,
+                                )
+                            elif (
+                                message.response
+                                and requires[action_num]
+                                and message.jsonheader.content_type == "binary"
+                            ):
+                                """
+                                if its a binary response, files was sent succesfully
+                                if there are any additional files to be sent, update the message
+                                """
+                                file = requires[action_n].pop(0)
+                                new_request = send_file_request(file)
+                                message.update_request(new_request)
+                            elif (
+                                message.response
+                                and message.jsonheader.content_type == "binary"
+                                and not requires[action_num]
+                            ):
+                                """if its a binary response and no more files to send, send the command"""
+                                action_to_do = actions[1:][action_num]
+                                temp = action_to_do[0].split("-")
+                                if "remote" in temp:
+                                    action_to_do[0] = temp[1]
 
-                    #         # TODO: Send multiple files!
-                    #         # send the first file
-                    #         msg = send_file(host, port, file, 2)
-                    #         fd.append(msg.sock.fileno())
-                    #         print(
-                    #             f"{colorama.Fore.BLUE}Sending file: {file} to {host} {port} {msg.sock}"
-                    #         )
-                    #         # with open("test2.c", "rb") as f:
-                    #         #     data = f.read()
-                    #         # msg.request = create_request("file",args = data)
-                    #         # print("sending second file")
-                    #         queues[action_n].extend(fd)
-                    #         # if no files or all the files have been sent
-                    #         # TODO: keep track of when files have been sucessfully received
+                                update_request = create_request(
+                                    "command",
+                                    command=action_to_do,
+                                )
+                                message.update_request(update_request)
+                            elif (
+                                message.response
+                                and not requires[action_num]
+                                and message.jsonheader.content_type == "text/json"
+                            ):
+                                """
+                                else no files to send, just send the command, returning message is from a query
+                                """
+                                action_to_do = actions[1:][action_num]
+                                temp = action_to_do[0].split("-")
+                                if "remote" in temp:
+                                    action_to_do[0] = temp[1]
 
-                    # # the socket has returned
-                    # if message.response and (
-                    #     message.jsonheader["content-type"] == "binary"
-                    # ):
+                                print(
+                                    f"{colorama.Fore.MAGENTA}ACTION TO DO IS: {action_to_do}"
+                                )
 
-                    #     action_n = in_list(socket_no, queues)
-
-                    #     if queues[action_n]:
-                    #         # trying to load the same socket with a new request
-                    #         # TODO: add filename and number of files into header?
-                    #         with open("test2.c", "rb") as f:
-                    #             data = f.read()
-                    #         new_request = create_request("file", args=data)
-
-                    #         reused_sock = msg.sock
-                    #         message = libclient.Message(
-                    #             sel, reused_sock, msg.addr, new_request
-                    #         )
-
-                    #         # msg._set_selector_events_mask("w")
-                    #         # msg._request_queued = False
-
-                    #         print("sending second file")
-
-                    # the queue will currently hold all the connections which a file has been sent and awaiting a reply
-                    # which action is the returning socket for?
-
-                    # if action_n != -1:
-                    #     # If there is a socket being awaited on, remove it from queue
-                    #     queues[action_n].remove(socket_no)
-
-                    # if not queues[action_n]:
-                    #     # temporary loop to see again if queue is empty,if so run the action
-                    #     # TODO: refactor this
-                    #     actions[1:][action_n]
-
-                    #     print(f"{colorama.Fore.GREEN}FINALLY RUN ACTUAL ACTION")
-
-                    #     # mock assume that file sucessfully sent
-                    #     actions[1:][action_n]
-
-                    #     request = create_request(
-                    #         "command",
-                    #         shell="cc",
-                    #         args=["-o", "output"],
-                    #         files=requires[action_n],
-                    #         action=action_n,
-                    #     )
-
-                    # start_connection(host, port, request)
-                    # TODO: receive the output file and do something with it here
+                                command_request = create_request(
+                                    "command", commmand=action_to_do
+                                )
+                                start_connection(sel, host, port, command_request)
 
                 except Exception:
                     print(
@@ -192,29 +206,8 @@ def event_loop(addresses):
                 break
     except KeyboardInterrupt:
         print("Caught keyboard interrupt, exiting")
-    # finally:
-    #     sel.close()
-
-
-def send_file(host, port, filename, action):
-    """
-    Send a file on a host
-
-        Parameters:
-            host (str): host ip address
-            port (int): port number
-            filename (str): file to send
-
-        Returns:
-            int : socket fd
-    """
-    with open(filename, "rb") as f:
-        data = f.read()
-
-    request = create_request(request="file", args=data, action=action)
-    # return 1
-
-    return start_connection(host, port, request)
+    finally:
+        sel.close()
 
 
 def main():
