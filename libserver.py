@@ -105,45 +105,75 @@ class Message:
         return message
 
     def _create_response_json_content(self):
-        request = self.request.get("request")
-        action = self.request.get("action")
+        request = self.request.request
 
         if request == "query":
             content = {"cost": random.randint(0, 100)}
-            print(f"{colorama.Fore.YELLOW}Sending: {content} {action}")
+            print(f"{colorama.Fore.YELLOW}Sending: {content}")
         else:
-            content = {"result": f"Error: invalid action '{action}'."}
+            content = {"result": f"Error: invalid action."}
         return content
 
     def _create_response_command(self):
-        shell = self.request.get("shell")
-        value = self.request.get("value")
-        files = self.request.get("files")
+        self.request = dotsi.fy(self.request)
+        shell = self.request.shell
+        args = self.request.args
+        files = self.request.files
+
         cmd = [shell]
-        cmd.extend(value)
+        cmd.extend(args)
         cmd.extend(files)
+
+        # FIXME:uncomment when testing full
+        # if self.directory is not None:
+        #     directory = self.directory
+        # else:
+        #     directory = os.getcwd()
+
+        directory = os.path.join(os.getcwd(), "test")
 
         print(f"{colorama.Fore.RED}CMD: {cmd}")
 
-        process = subprocess.run(cmd, check=True, capture_output=True)
-        output = {
-            "output": process.stdout.decode("utf-8"),
-            "exit_status": process.returncode,
-        }
+        try:
+            process = subprocess.run(
+                cmd, check=True, capture_output=True, cwd=directory
+            )
+            output = dotsi.Dict(
+                {
+                    "output": process.stdout.decode("utf-8"),
+                    "exit_status": process.returncode,
+                }
+            )
 
-        # get newest file, send it back
-        list_of_files = glob.glob(
-            "./*"
-        )  # * means all if need specific format then *.csv
-        latest_file = max(list_of_files, key=os.path.getctime)
+            print(f"Output: {output.output}, exit_status:{output.exit_status}")
+        except Exception as exc:
+            print(exc)
 
-        print("Latest file is:")
-        print(latest_file)
-
+        # get compiled file which is presumably the newest file
+        latest_file = self.get_latest_file(directory)
+        filename = os.path.basename(latest_file)
+        # send back the compiled file
         with open(latest_file, "rb") as f:
             data = f.read()
 
+        output.update({"filename": filename})
+
         return (data, output)
+
+    def get_latest_file(self, directory):
+
+        file_list = [
+            os.path.join(directory, f)
+            for f in os.listdir(directory)
+            if os.path.isfile(os.path.join(directory, f))
+        ]
+
+        file = max(file_list, key=os.path.getctime)
+
+        base_file = os.path.basename(file)
+        print(f"Latest file is: {base_file}")
+
+        return file
 
     def process_events(self, mask):
         if mask & selectors.EVENT_READ:
@@ -245,10 +275,10 @@ class Message:
 
             print(f"File written to ${fullpath}")
 
-        elif self.jsonheader["content_type"] == "command":
+        elif self.jsonheader.content_type == "command":
             # if a command is given
             # encoding = self.jsonheader["content_encoding"]
-            encoding = self.jsonheader["content_encoding"]
+            encoding = self.jsonheader.content_encoding
             self.request = self._json_decode(data, encoding)
             print(f"{colorama.Fore.GREEN}Received command request!")
 
@@ -282,10 +312,13 @@ class Message:
             # if a cc command is given
             # TODO: Do something with output, the subprocess return code
             content_bytes, output = self._create_response_command()
-            header = {
-                "content_type": "command",
-                "content_encoding": "binary",
-            }
+            header = dotsi.Dict(
+                {
+                    "content_type": "command",
+                    "content_encoding": "binary",
+                }
+            )
+            header.update(output)
 
             print(f"{colorama.Fore.YELLOW}Created 'command' response")
 

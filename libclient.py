@@ -54,8 +54,14 @@ class Message:
                 raise RuntimeError("Peer closed.")
 
     def _write(self):
+        request = self.request.type
         if self._send_buffer:
-            print(f"Sending {self._send_buffer!r} to {self.addr}")
+            if request == "binary":
+                print(f"Sending {self.request.filename} to {self.addr}")
+            elif request == "command":
+                print(f"Sending {self.request.content.shell} command to {self.addr}")
+            else:
+                print(f"Sending {self._send_buffer!r} to {self.addr}")
             try:
                 # Should be ready to write
                 sent = self.sock.send(self._send_buffer)
@@ -97,9 +103,12 @@ class Message:
         print(f"{content!r}")
 
     def _process_response_command(self):
-        content = self.response
+        # compile file sent by server!
 
-        with open("from_server", "wb") as f:
+        content = self.response
+        filename = self.jsonheader.filename
+        print(f"Received {filename} from server")
+        with open(filename, "wb") as f:
             f.write(content)
 
     def process_events(self, mask):
@@ -162,7 +171,7 @@ class Message:
                 "action": action,
             }
         elif content_type == "command":
-            content_bytes: self._json_encode(content, content_encoding)
+            content_bytes = self._json_encode(content, content_encoding)
             header = {
                 "content_type": content_type,
                 "content_encoding": content_encoding,
@@ -203,13 +212,14 @@ class Message:
                     raise ValueError(f"Missing required header '{reqhdr}'.")
 
     def process_response(self):
-        content_len = self.jsonheader["content_length"]
+        self.jsonheader = dotsi.fy(self.jsonheader)
+        content_len = self.jsonheader.content_length
         if not len(self._recv_buffer) >= content_len:
             return
         data = self._recv_buffer[:content_len]
         self._recv_buffer = self._recv_buffer[content_len:]
 
-        if self.jsonheader["content_type"] == "text/json":
+        if self.jsonheader.content_type == "text/json":
             encoding = self.jsonheader["content_encoding"]
             self.response = self._json_decode(data, encoding)
             print(f"Received response {self.response!r} from {self.addr}")
@@ -217,7 +227,7 @@ class Message:
 
             self.close()
 
-        elif self.jsonheader["content_type"] == "command":
+        elif self.jsonheader.content_type == "command":
             self.response = data
             print(
                 f"Received {self.jsonheader['content_type']} "
@@ -229,8 +239,7 @@ class Message:
             # Binary or unknown content_type
             self.response = data
             print(
-                f"Received {self.jsonheader['content_type']} "
-                f"response from {self.addr}"
+                f"Received {self.jsonheader.content_type} " f"response from {self.addr}"
             )
             self._process_response_binary_content()
         # Close when response has been processed
