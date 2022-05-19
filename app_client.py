@@ -1,10 +1,9 @@
-import socket
-import selectors
-import traceback
+import logging, traceback, selectors
+import sys
 
 import colorama, dotsi
+from parser import parse_file
 
-import libclient
 from utils import (
     create_request,
     send_file_request,
@@ -15,7 +14,6 @@ from utils import (
 )
 
 
-sel = selectors.DefaultSelector()
 colorama.init(autoreset=True)
 
 
@@ -33,36 +31,19 @@ collect the returned costs, send a request to remote host,
 which may involve sending a file for each action and receiving back a file from each host
 """
 
-files_to_send = ["test.c", "test2.c"]
-
 
 # request_cc = create_request(
 #     "command", shell="cc", args=["-o", "output_file"], files=files_to_send
 # )
 
 # first query
-def event_loop(addresses):
+def event_loop(addresses, actions):
     """
     Run for each action in an actionset to query all the connected servers.
     will return the minimum bid server and it's ip address
 
     """
-
-    # mock the actionset input here
-    actions = [
-        "actionset1:",
-        [
-            "remote-cc",
-            "-o",
-            "my_output",
-            "test.c",
-            "test2.c",
-            ["requires", "test.c", "test2.c"],
-        ],
-        # ["echo", "hello"],
-    ]
-
-    actionset1 = actions[0]
+    sel = selectors.DefaultSelector()
 
     # buffers to hold connection data per action
     queues = []
@@ -70,7 +51,6 @@ def event_loop(addresses):
     queries = [[] for x in actions[1:]]
     running_socket = [-1 for x in actions[1:]]
 
-    # mock actionset 1 only first
     for index, action in enumerate(actions[1:]):
 
         fd_action = []
@@ -96,15 +76,14 @@ def event_loop(addresses):
                 """experimental"""
                 try:
                     message.process_events(mask)
-
                     socket_no = key.fd
                     action_n = in_list(socket_no, queues)
+
                     if message.response and (
                         message.jsonheader.content_type == "text/json"
                     ):
 
                         # Process the server response to query request, if there is a response and type is query
-
                         if action_n != -1:
                             # If there is a socket being awaited on, remove it from queue and store result
                             queues[action_n].remove(socket_no)
@@ -115,11 +94,13 @@ def event_loop(addresses):
                                 }
                             )
                             if not queues[action_n]:
+                                # if after dequeing, that was the last socket being awaited on for queries
                                 running_socket[action_n] = socket_no
 
                     if running_socket.count(socket_no) > 0:
                         action_num = running_socket.index(socket_no)
-                        if not queues[action_num]:
+
+                        if not queues[action_num] and message.response:
                             """
                             if for an action, not waiting for any more sockets to return from query request
 
@@ -128,8 +109,7 @@ def event_loop(addresses):
                             """
 
                             if (
-                                message.response
-                                and requires[action_num]
+                                requires[action_num]
                                 and message.jsonheader.content_type == "text/json"
                             ):
                                 # if its a query response coming back, initiate file transfers
@@ -146,20 +126,18 @@ def event_loop(addresses):
                                     socket=None,
                                 )
                             elif (
-                                message.response
-                                and requires[action_num]
+                                requires[action_num]
                                 and message.jsonheader.content_type == "binary"
                             ):
                                 """
                                 if its a binary response, files was sent succesfully
                                 if there are any additional files to be sent, update the message
                                 """
-                                file = requires[action_n].pop(0)
+                                file = requires[action_num].pop(0)
                                 new_request = send_file_request(file)
                                 message.update_request(new_request)
                             elif (
-                                message.response
-                                and message.jsonheader.content_type == "binary"
+                                message.jsonheader.content_type == "binary"
                                 and not requires[action_num]
                             ):
                                 """if its a binary response and no more files to send, send the command"""
@@ -174,8 +152,7 @@ def event_loop(addresses):
                                 )
                                 message.update_request(update_request)
                             elif (
-                                message.response
-                                and not requires[action_num]
+                                not requires[action_num]
                                 and message.jsonheader.content_type == "text/json"
                             ):
                                 """
@@ -191,7 +168,7 @@ def event_loop(addresses):
                                 )
 
                                 command_request = create_request(
-                                    "command", commmand=action_to_do
+                                    "command", command=action_to_do
                                 )
                                 start_connection(sel, host, port, command_request)
 
@@ -201,6 +178,7 @@ def event_loop(addresses):
                         f"{traceback.format_exc()}"
                     )
                     message.close()
+                    raise RuntimeError("ERROR BRO")
             # Check for a socket being monitored to continue.
             if not sel.get_map():
                 break
@@ -211,17 +189,16 @@ def event_loop(addresses):
 
 
 def main():
-    # parser(filename)
 
-    # mock return of parser
-    host = "127.0.0.1"
-    port = 65432
-    port2 = 65431
+    addresses, action_sets = parse_file(sys.argv[1])
 
-    addresses = [(host, port)]
-
-    event_loop(addresses)
-    sel.close()
+    for action_set in action_sets:
+        actions = action_set[1:]
+        try:
+            event_loop(addresses, actions)
+        except RuntimeError as e:
+            # logging.exception(e)
+            raise RuntimeError("FUCK!")
 
 
 if __name__ == "__main__":

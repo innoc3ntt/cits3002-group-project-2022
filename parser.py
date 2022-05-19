@@ -21,17 +21,14 @@ def parse_file(filename):
                 temp = []
                 for word in chars[2:]:
                     # Check if each option has an additional port given with :
-                    if ":" in word:
-                        temp.append(word.split(":"))
-                    else:
-                        temp.append(word)
+                    temp.append(word)
                 configs.append({chars[0]: temp})
 
             elif re.match(r"^.*\:$", line):
                 # if line defines an actionset
                 if len(actions):
                     # if actions is not empty
-                    actions[-1].append(buffer)
+                    actions[-1].extend(buffer)
 
                 # create a new actionset and clear the buffer
                 actions.append([line.split()[0]])
@@ -53,7 +50,23 @@ def parse_file(filename):
         if buffer:
             actions[-1].append(buffer)
 
-    return configs, actions
+    addresses = []
+
+    for config in configs:
+        if "PORT" in config.keys():
+            port = config["PORT"][0]
+            configs.remove(config)
+
+    for index, config in enumerate(configs):
+        if "HOSTS" in config.keys():
+            for option in config["HOSTS"]:
+                if ":" not in option:
+                    config[index] = option + ":" + port
+                    addresses.append((option, int(port)))
+                else:
+                    split = option.split(":")
+                    addresses.append((split[0], int(split[1])))
+    return addresses, actions
 
 
 def main():
@@ -61,19 +74,10 @@ def main():
         print(f"Usage: {sys.argv[0]} <filename> ")
         sys.exit(1)
 
-    configs, actions = parse_file(sys.argv[1])
+    addresses, actions = parse_file(sys.argv[1])
 
-    print(configs)
+    print(addresses)
     print(actions)
-
-    actionset1 = actions[0]
-    action1_1 = actionset1[1][0]
-
-    if action1_1[-1][0] == "requires":
-        files = action1_1[-1]
-        files = files[1:]
-
-    # print(files)
 
 
 if __name__ == "__main__":

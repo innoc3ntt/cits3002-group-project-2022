@@ -55,7 +55,6 @@ class Message(MessageAll):
         jsonheader.update(header)
         jsonheader_bytes = self._json_encode(jsonheader, "utf-8")
         message_hdr = struct.pack(">H", len(jsonheader_bytes))
-        print(f"LENGTH OF JSONHEADER: {len(jsonheader_bytes)}")
         message = message_hdr + jsonheader_bytes + content_bytes
         return message
 
