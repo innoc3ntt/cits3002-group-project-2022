@@ -31,6 +31,15 @@ class Message:
             raise ValueError(f"Invalid events mask mode {mode!r}.")
         self.selector.modify(self.sock, events, data=self)
 
+    def update_request(self, request):
+        self.request = request
+        self._recv_buffer = b""
+        self._send_buffer = b""
+        self._request_queued = False
+        self._jsonheader_len = None
+        self.jsonheader = None
+        self.response = None
+
     def _read(self):
         try:
             # Should be ready to read
@@ -66,12 +75,13 @@ class Message:
         return obj
 
     def _create_message(self, header, content_bytes):
-        jsonheader = dotsi.Dict({
-            "byteorder": sys.byteorder,
-            "content_length": len(content_bytes),
-        })
+        jsonheader = dotsi.Dict(
+            {
+                "byteorder": sys.byteorder,
+                "content_length": len(content_bytes),
+            }
+        )
         jsonheader.update(header)
-        print(jsonheader)
         jsonheader_bytes = self._json_encode(jsonheader, "utf-8")
         message_hdr = struct.pack(">H", len(jsonheader_bytes))
         message = message_hdr + jsonheader_bytes + content_bytes
@@ -139,35 +149,35 @@ class Message:
             self.sock = None
 
     def queue_request(self):
-        content = self.request["content"]
-        content_type = self.request["type"]
-        content_encoding = self.request["encoding"]
-        action = self.request["action"]
+        content = self.request.content
+        content_type = self.request.type
+        content_encoding = self.request.encoding
+        action = 2
+
         if content_type == "text/json":
-            content_bytes= self._json_encode(content, content_encoding)
-            req = {
-               
+            content_bytes = self._json_encode(content, content_encoding)
+            header = {
                 "content_type": content_type,
                 "content_encoding": content_encoding,
                 "action": action,
             }
         elif content_type == "command":
             content_bytes: self._json_encode(content, content_encoding)
-            req = {
+            header = {
                 "content_type": content_type,
                 "content_encoding": content_encoding,
                 "action": action,
             }
         else:
-            content_bytes= content
-            req = {
-
+            content_bytes = content
+            filename = self.request.filename
+            header = {
                 "content_type": content_type,
                 "content_encoding": content_encoding,
-                "action": action,
+                "filename": filename,
             }
 
-        message = self._create_message(req, content_bytes)
+        message = self._create_message(header, content_bytes)
         self._send_buffer += message
         self._request_queued = True
 

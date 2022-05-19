@@ -5,14 +5,15 @@ import traceback
 import os
 import colorama
 import dotsi
-from soupsieve import select
 
 import libclient
 
 sel = selectors.DefaultSelector()
 
 
-def create_request(request, action=None, args=None, shell="echo", files=None):
+def create_request(
+    request, action=None, args=None, shell="echo", files=None, data=None, filename=None
+):
     """
     Create a request to pass to start_connection
     One of three types
@@ -31,21 +32,27 @@ def create_request(request, action=None, args=None, shell="echo", files=None):
         (dict) A dictionary representing the request object
     """
     if request == "query":
-        return dict(
+        return dotsi.Dict(
             type="text/json",
             encoding="utf-8",
             content=dict(request=request),
             action=action,
         )
     elif request == "command":
-        return dict(
+        return dotsi.Dict(
             type="command",
             encoding="utf-8",
             content=dict(request=request, shell=shell, args=args, files=files),
             action=action,
         )
     elif request == "file":
-        return dict(type="binary", encoding="binary", content=args, action=action)
+        return dotsi.Dict(
+            type="binary",
+            encoding="binary",
+            content=data,
+            action=action,
+            filename=filename,
+        )
 
 
 def start_connection(host, port, request):
@@ -61,28 +68,33 @@ def start_connection(host, port, request):
     return sock.fileno()
 
 
-filename = "test2.c"
+def get_file_data(filename):
+    with open(filename, "rb") as f:
+        data = f.read()
 
-with open(filename, "rb") as f:
-    data2 = f.read()
+    return data
+
+
+def send_my_file_please(filename, socket, address, sel):
+
+    data = get_file_data(filename)
+    request = create_request("file", data=data, filename=filename)
+    message = libclient.Message(sel, socket, address, request)
+    sel.modify(socket, events=selectors.EVENT_WRITE, data=message)
+
 
 def main():
     host = "127.0.0.1"
     port = 65432
 
-    filename = "test.c"
-
-    with open(filename, "rb") as f:
-        data = f.read()
-
     # request = create_request(
     #     "command", shell="cc", value=["-o", "output"], files=filename
     # )
 
-    request = create_request("file", args=data, action="5")
-
+    """send the first file"""
+    request = create_request("file", data=get_file_data("test.c"), filename="test.c")
     start_connection(host, port, request)
-
+    times = 1
     try:
         while True:
             events = sel.select(timeout=1)
@@ -91,12 +103,22 @@ def main():
                 try:
                     message.process_events(mask)
 
-                    if message.jsonheader != None:
-                        if (message.jsonheader["content_type"] == "binary"):
-                            new_request = create_request("file",args=data2, action="5" )
-                            new_message = libclient.Message(sel, key.fileobj,message.addr,new_request)
-                            print(key.fileobj)
-                            sel.modify(key.fileobj,events=selectors.EVENT_WRITE,data=new_message)
+                    if (
+                        message.response
+                        and message.jsonheader["content_type"] == "binary"
+                    ):
+                        # if receive a binary response from server
+                        if times > 0:
+                            # temporary loop
+                            send_my_file_please(
+                                filename="test2.c",
+                                socket=key.fileobj,
+                                address=message.addr,
+                                sel=sel,
+                            )
+                            times -= 1
+                        else:
+                            message.close()
                 except Exception:
                     print(
                         f"Main: Error: Exception for {message.addr}:\n"
