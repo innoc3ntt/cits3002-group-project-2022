@@ -1,4 +1,4 @@
-import os, subprocess, sys, selectors, json, io, struct, time, random, tempfile, shutil, logging
+import os, subprocess, sys, struct, time, random, tempfile, shutil, logging
 
 import dotsi, colorama
 
