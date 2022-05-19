@@ -33,6 +33,29 @@ def get_file_data(filename):
     return data
 
 
+def query(sel, host, port):
+    """Wrapper around start_connection to be called for each action to each host"""
+    query = create_request("query")
+    return start_connection(sel, host, port, query)
+
+
+def in_list(c, classes):
+    """
+    Convenience function to find which list in a 2D list an integer is in
+
+        Parameters:
+            c (int): The integer to look for
+            classes list[int]: 2D list to search in
+
+        Returns:
+            i (int): index of list containing element, -1 if not found
+    """
+    for i, sublist in enumerate(classes):
+        if c in sublist:
+            return i
+    return -1
+
+
 def get_latest_file(directory):
     file_list = [
         os.path.join(directory, f)

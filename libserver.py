@@ -59,6 +59,7 @@ class Message(MessageAll):
         return message
 
     def _create_response_json_content(self):
+        self.request = dotsi.fy(self.request)
         request = self.request.request
 
         if request == "query":
@@ -149,7 +150,7 @@ class Message(MessageAll):
 
         if self.jsonheader.content_type == "text/json":
             # if json content
-            encoding = self.jsonheader.encoding_type
+            encoding = self.jsonheader.content_encoding
             self.request = self._json_decode(data, encoding)
             print(f">>> Received request {self.request!r} from {self.addr}")
 

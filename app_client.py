@@ -1,64 +1,15 @@
-import sys
 import socket
 import selectors
 import traceback
-import os
-import colorama
+
+import colorama, dotsi
 
 import libclient
+from utils import create_request, start_connection, in_list, query
 
 
 sel = selectors.DefaultSelector()
 colorama.init(autoreset=True)
-
-
-def create_request(request, action=None, args=None, shell="echo", files=None):
-    """
-    Create a request to pass to start_connection
-    One of three types
-    - query
-    - command
-    - file
-
-    Parameters:
-        request (str): type of request, query, command or file
-        action (int): action number associated with
-        args: extra args to pass to a "command" request
-        shell: command to pass to shell, default echo
-        files: name of files to send
-
-    Returns:
-        (dict) A dictionary representing the request object
-    """
-    if request == "query":
-        return dict(
-            type="text/json",
-            encoding="utf-8",
-            content=dict(request=request),
-            action=action,
-        )
-    elif request == "command":
-        return dict(
-            type="command",
-            encoding="utf-8",
-            content=dict(request=request, shell=shell, args=args, files=files),
-            action=action,
-        )
-    elif request == "file":
-        return dict(type="binary", encoding="binary", content=args, action=action)
-
-
-def start_connection(host, port, request):
-    addr = (host, port)
-    print(f"Starting connection to {addr}")
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setblocking(False)
-    sock.connect_ex(addr)
-    events = selectors.EVENT_READ | selectors.EVENT_WRITE
-    message = libclient.Message(sel, sock, addr, request)
-    sel.register(sock, events, data=message)
-
-    return message
 
 
 # if len(sys.argv) != 5:
@@ -76,23 +27,6 @@ which may involve sending a file for each action and receiving back a file from 
 """
 
 
-def in_list(c, classes):
-    """
-    Convenience function to find which list in a 2D list an integer is in
-
-        Parameters:
-            c (int): The integer to look for
-            classes list[int]: 2D list to search in
-
-        Returns:
-            i (int): index of list containing element, -1 if not found
-    """
-    for i, sublist in enumerate(classes):
-        if c in sublist:
-            return i
-    return -1
-
-
 # first query
 def event_loop(addresses):
     """
@@ -100,8 +34,6 @@ def event_loop(addresses):
     will return the minimum bid server and it's ip address
 
     """
-
-    query = create_request("query", -1)
 
     # mock the actionset input here
     actions = [
@@ -124,14 +56,13 @@ def event_loop(addresses):
         if action[-1][0] == "requires":
             for file in action[-1][1:]:
                 requires[index].append(file)
-            # remove the require for later processing
+            # remove the requires for later processing
             action.pop()
 
         for address in addresses:
             # for each host!
             host, port = address
-            fd = start_connection(host, port, query).sock.fileno()
-            fd_action.append(fd)
+            fd_action.append(query(sel, host, port))
 
         queues.append(fd_action)
 
@@ -147,7 +78,7 @@ def event_loop(addresses):
 
                     socket_no = key.fd
                     if message.response and (
-                        message.jsonheader["content-type"] == "text/json"
+                        message.jsonheader.content_type == "text/json"
                     ):
                         # TODO: make a file/received type for libclient/libserver
                         # Process the server response to query request, if there is a response and type is query
@@ -166,96 +97,89 @@ def event_loop(addresses):
                                 }
                             )
 
+                    #     if not queues[action_n]:
+                    #         """
+                    #         if for an action, not waiting for any more sockets to return
+                    #         determine the lowest bid and send the relevant action
+                    #         by starting a new connection with different request
+                    #         """
 
+                    #         minCost = min(queries[action_n], key=lambda x: x["cost"])
+                    #         # print(f"{colorama.Fore.RED}Start connection to {minCost}")
+                    #         host, port = minCost["address"]
 
+                    #         # create buffer to store socket no to be returned
+                    #         fd = []
 
-                        if not queues[action_n]:
-                            """
-                            if for an action, not waiting for any more sockets to return
-                            determine the lowest bid and send the relevant action
-                            by starting a new connection with different request
-                            """
+                    #         # for file in requires[action_n]:
+                    #         #     # if there are files required to be sent for the action, send them
 
-                            minCost = min(queries[action_n], key=lambda x: x["cost"])
-                            # print(f"{colorama.Fore.RED}Start connection to {minCost}")
-                            host, port = minCost["address"]
+                    #         # TODO: Send multiple files!
+                    #         # send the first file
+                    #         msg = send_file(host, port, file, 2)
+                    #         fd.append(msg.sock.fileno())
+                    #         print(
+                    #             f"{colorama.Fore.BLUE}Sending file: {file} to {host} {port} {msg.sock}"
+                    #         )
+                    #         # with open("test2.c", "rb") as f:
+                    #         #     data = f.read()
+                    #         # msg.request = create_request("file",args = data)
+                    #         # print("sending second file")
+                    #         queues[action_n].extend(fd)
+                    #         # if no files or all the files have been sent
+                    #         # TODO: keep track of when files have been sucessfully received
 
-                            # create buffer to store socket no to be returned
-                            fd = []
+                    # # the socket has returned
+                    # if message.response and (
+                    #     message.jsonheader["content-type"] == "binary"
+                    # ):
 
-                            # for file in requires[action_n]:
-                            #     # if there are files required to be sent for the action, send them
+                    #     action_n = in_list(socket_no, queues)
 
+                    #     if queues[action_n]:
+                    #         # trying to load the same socket with a new request
+                    #         # TODO: add filename and number of files into header?
+                    #         with open("test2.c", "rb") as f:
+                    #             data = f.read()
+                    #         new_request = create_request("file", args=data)
 
-                            # TODO: Send multiple files!
-                            # send the first file
-                            msg = send_file(host, port, file, 2)
-                            fd.append(msg.sock.fileno())
-                            print(
-                                f"{colorama.Fore.BLUE}Sending file: {file} to {host} {port} {msg.sock}"
-                                )
-                            # with open("test2.c", "rb") as f:
-                            #     data = f.read()
-                            # msg.request = create_request("file",args = data)
-                            # print("sending second file")
-                            queues[action_n].extend(fd)
-                            # if no files or all the files have been sent
-                            # TODO: keep track of when files have been sucessfully received
+                    #         reused_sock = msg.sock
+                    #         message = libclient.Message(
+                    #             sel, reused_sock, msg.addr, new_request
+                    #         )
 
+                    #         # msg._set_selector_events_mask("w")
+                    #         # msg._request_queued = False
 
+                    #         print("sending second file")
 
+                    # the queue will currently hold all the connections which a file has been sent and awaiting a reply
+                    # which action is the returning socket for?
 
-                    # the socket has returned
-                    if message.response and (
-                        message.jsonheader["content-type"] == "binary"
-                    ):
+                    # if action_n != -1:
+                    #     # If there is a socket being awaited on, remove it from queue
+                    #     queues[action_n].remove(socket_no)
 
-                        action_n = in_list(socket_no, queues)
+                    # if not queues[action_n]:
+                    #     # temporary loop to see again if queue is empty,if so run the action
+                    #     # TODO: refactor this
+                    #     actions[1:][action_n]
 
+                    #     print(f"{colorama.Fore.GREEN}FINALLY RUN ACTUAL ACTION")
 
-                        if queues[action_n]:
-                            # trying to load the same socket with a new request
-                            # TODO: add filename and number of files into header?
-                            with open("test2.c", "rb") as f:
-                                data = f.read()
-                            new_request = create_request("file",args = data)
+                    #     # mock assume that file sucessfully sent
+                    #     actions[1:][action_n]
 
-                            reused_sock = msg.sock
-                            message = libclient.Message(sel, reused_sock, msg.addr, new_request)
+                    #     request = create_request(
+                    #         "command",
+                    #         shell="cc",
+                    #         args=["-o", "output"],
+                    #         files=requires[action_n],
+                    #         action=action_n,
+                    #     )
 
-                            # msg._set_selector_events_mask("w")
-                            # msg._request_queued = False
-
-                            print("sending second file")
-
-                        # the queue will currently hold all the connections which a file has been sent and awaiting a reply
-                        # which action is the returning socket for?
-
-
-                        # if action_n != -1:
-                        #     # If there is a socket being awaited on, remove it from queue
-                        #     queues[action_n].remove(socket_no)
-
-                        # if not queues[action_n]:
-                        #     # temporary loop to see again if queue is empty,if so run the action
-                        #     # TODO: refactor this
-                        #     actions[1:][action_n]
-
-                        #     print(f"{colorama.Fore.GREEN}FINALLY RUN ACTUAL ACTION")
-
-                        #     # mock assume that file sucessfully sent
-                        #     actions[1:][action_n]
-
-                        #     request = create_request(
-                        #         "command",
-                        #         shell="cc",
-                        #         args=["-o", "output"],
-                        #         files=requires[action_n],
-                        #         action=action_n,
-                        #     )
-
-                            # start_connection(host, port, request)
-                            # TODO: receive the output file and do something with it here
+                    # start_connection(host, port, request)
+                    # TODO: receive the output file and do something with it here
 
                 except Exception:
                     print(
