@@ -1,65 +1,31 @@
-import glob
-import os
-import subprocess
-import sys
-import selectors
-import json
-import io
-import struct
-import time
-import random
-import colorama
-import dotsi
-import tempfile
-import shutil
-import logging
+import os, subprocess, sys, selectors, json, io, struct, time, random, tempfile, shutil, logging
+
+import dotsi, colorama
+
 from utils import get_latest_file
+from liball import MessageAll
 
 random.seed(time.time())
 colorama.init(autoreset=True)
 
 
-class Message:
+class Message(MessageAll):
     def __init__(self, selector, sock, addr):
-        self.selector = selector
-        self.sock = sock
-        self.addr = addr
+        super().__init__(selector, sock, addr)
+        self.directory = None
+        self.response_created = False
+
+    def reset(self):
+        self._set_selector_events_mask("r")
         self._recv_buffer = b""
         self._send_buffer = b""
         self._jsonheader_len = None
         self.jsonheader = None
         self.request = None
         self.response_created = False
-        self.directory = None
-
-    def _set_selector_events_mask(self, mode):
-        """Set selector to listen for events: mode is 'r', 'w', or 'rw'."""
-        if mode == "r":
-            events = selectors.EVENT_READ
-        elif mode == "w":
-            events = selectors.EVENT_WRITE
-        elif mode == "rw":
-            events = selectors.EVENT_READ | selectors.EVENT_WRITE
-        else:
-            raise ValueError(f"Invalid events mask mode {mode!r}.")
-        self.selector.modify(self.sock, events, data=self)
-
-    def _read(self):
-        try:
-            # Should be ready to read
-            data = self.sock.recv(4096)
-        except BlockingIOError:
-            # Resource temporarily unavailable (errno EWOULDBLOCK)
-            pass
-        else:
-            if data:
-                self._recv_buffer += data
-            else:
-                raise RuntimeError("Peer closed.")
 
     def _write(self):
         if self._send_buffer:
-            # print(f"Sending {self._send_buffer!r} to {self.addr}")
             try:
                 # Should be ready to write
                 sent = self.sock.send(self._send_buffer)
@@ -69,30 +35,15 @@ class Message:
             else:
                 self._send_buffer = self._send_buffer[sent:]
                 # Close when the buffer is drained. The response has been sent.
+                if (
+                    "keep_connection_alive" in self.jsonheader.keys()
+                    and self.jsonheader.keep_connection_alive > 0
+                ):
+                    self.reset()
+                    print(f"<<< Keep connection alive for ${self.addr} >>>")
 
-                if self.jsonheader["content_type"] == "binary":
-                    print("Keep connection alive")
-                    self._set_selector_events_mask("r")
-                    self._recv_buffer = b""
-                    self._send_buffer = b""
-                    self._jsonheader_len = None
-                    self.jsonheader = None
-                    self.request = None
-                    self.response_created = False
-
-                    return
-
-                if sent and not self._send_buffer:
+                elif sent and not self._send_buffer:
                     self.close()
-
-    def _json_encode(self, obj, encoding):
-        return json.dumps(obj, ensure_ascii=False).encode(encoding)
-
-    def _json_decode(self, json_bytes, encoding):
-        tiow = io.TextIOWrapper(io.BytesIO(json_bytes), encoding=encoding, newline="")
-        obj = json.load(tiow)
-        tiow.close()
-        return obj
 
     def _create_message(self, header, content_bytes):
         jsonheader = dotsi.Dict(
@@ -132,45 +83,37 @@ class Message:
         else:
             directory = os.getcwd()
 
-        print(f"{colorama.Fore.RED}CMD: {cmd}")
+        print(f"{colorama.Fore.RED}Running CMD: {cmd}")
 
-        try:
-            process = subprocess.run(
-                cmd, check=True, capture_output=True, cwd=directory
-            )
-            output = dotsi.Dict(
-                {
-                    "output": process.stdout.decode("utf-8"),
-                    "exit_status": process.returncode,
-                }
-            )
-            print(f"Output: {output.output}, exit_status: {output.exit_status}")
-        except Exception as exc:
-            print(exc)
-            logging.excption("Subprocess exited non-zero")
+        process = subprocess.run(cmd, check=True, capture_output=True, cwd=directory)
 
-        # get compiled file which is presumably the newest file
-        latest_file = self.get_latest_file(directory)
-        filename = os.path.basename(latest_file)
+        output = dotsi.Dict(
+            {
+                "output": process.stdout.decode("utf-8"),
+                "exit_status": process.returncode,
+            }
+        )
 
-        # send back the compiled file
-        with open(latest_file, "rb") as f:
-            data = f.read()
+        if process.returncode == 0:
+            # get compiled file which is presumably the newest file
+            latest_file = get_latest_file(directory)
+            filename = os.path.basename(latest_file)
+            output.update({"filename": filename})
+            # send back the compiled file
+            with open(latest_file, "rb") as f:
+                data = f.read()
 
-        output.update({"filename": filename})
+        else:
+            logging.exception("Subprocess exited non-zero")
 
-        # cleanup tmp dir
+        logging.debug(f"Output: {output.output}, exit_status: {output.exit_status}")
+
         if "tmp" in self.directory:
+            # cleanup tmp dir
             print(f"=== Removing ${self.directory} ===")
             shutil.rmtree(self.directory)
 
         return (data, output)
-
-    def process_events(self, mask):
-        if mask & selectors.EVENT_READ:
-            self.read()
-        if mask & selectors.EVENT_WRITE:
-            self.write()
 
     def read(self):
         self._read()
@@ -193,41 +136,6 @@ class Message:
 
         self._write()
 
-    def close(self):
-        print(f"Closing connection to {self.addr}")
-        try:
-            self.selector.unregister(self.sock)
-        except Exception as e:
-            print(f"Error: selector.unregister() exception for " f"{self.addr}: {e!r}")
-
-        try:
-            self.sock.close()
-        except OSError as e:
-            print(f"Error: socket.close() exception for {self.addr}: {e!r}")
-        finally:
-            # Delete reference to socket object for garbage collection
-            self.sock = None
-
-    def process_protoheader(self):
-        hdrlen = 2
-        if len(self._recv_buffer) >= hdrlen:
-            self._jsonheader_len = struct.unpack(">H", self._recv_buffer[:hdrlen])[0]
-            self._recv_buffer = self._recv_buffer[hdrlen:]
-
-    def process_jsonheader(self):
-        hdrlen = self._jsonheader_len
-        if len(self._recv_buffer) >= hdrlen:
-            self.jsonheader = self._json_decode(self._recv_buffer[:hdrlen], "utf-8")
-            self._recv_buffer = self._recv_buffer[hdrlen:]
-            for reqhdr in (
-                "byteorder",
-                "content_length",
-                "content_type",
-                "content_encoding",
-            ):
-                if reqhdr not in self.jsonheader:
-                    raise ValueError(f"Missing required header '{reqhdr}'.")
-
     def process_request(self):
         self.jsonheader = dotsi.fy(self.jsonheader)
 
@@ -237,13 +145,13 @@ class Message:
 
         # data populated from buffer
         data = self._recv_buffer[:content_len]
-
         self._recv_buffer = self._recv_buffer[content_len:]
-        if self.jsonheader["content_type"] == "text/json":
+
+        if self.jsonheader.content_type == "text/json":
             # if json content
-            encoding = self.jsonheader["content_encoding"]
+            encoding = self.jsonheader.encoding_type
             self.request = self._json_decode(data, encoding)
-            print(f"Received request {self.request!r} from {self.addr}")
+            print(f">>> Received request {self.request!r} from {self.addr}")
 
         elif self.jsonheader.content_type == "binary":
             # File recieved
@@ -251,7 +159,7 @@ class Message:
             filename = self.jsonheader.filename
 
             print(
-                f"{colorama.Fore.RED}Received {self.jsonheader.content_type} "
+                f"{colorama.Fore.RED}>>> Received {self.jsonheader.content_type} "
                 f"request from {self.addr}"
             )
 
@@ -264,22 +172,19 @@ class Message:
             with open(fullpath, "wb") as f:
                 f.write(data)
 
-            print(f"File written to ${fullpath}")
+            print(f"=== File:{filename} written to ${fullpath} ===")
 
         elif self.jsonheader.content_type == "command":
             # if a command is given
-            # encoding = self.jsonheader["content_encoding"]
             encoding = self.jsonheader.content_encoding
             self.request = self._json_decode(data, encoding)
-            print(f"{colorama.Fore.GREEN}Received command request!")
-
-        # print(f"Received request {self.request!r} from {self.addr}")
+            print(f"{colorama.Fore.GREEN}>>> Received command request from {self.addr}")
 
         # Set selector to listen for write events, we're done reading.
         self._set_selector_events_mask("w")
 
     def create_response(self):
-        if self.jsonheader["content_type"] == "text/json":
+        if self.jsonheader.content_type == "text/json":
             response = self._create_response_json_content()
             content_bytes = self._json_encode(response, "utf-8")
             header = dotsi.Dict(
@@ -289,9 +194,9 @@ class Message:
                 }
             )
             print(f"{colorama.Fore.CYAN}Created 'query/json' response ")
-        elif self.jsonheader["content_type"] == "binary":
+        elif self.jsonheader.content_type == "binary":
             # Binary or unknown content_type
-            content_bytes = b"First 10 bytes of request: " + self.request[:10]
+            content_bytes = b">>>First 10 bytes of request: " + self.request[:10]
             header = dotsi.Dict(
                 {
                     "content_type": "binary",
@@ -299,7 +204,7 @@ class Message:
                 }
             )
             print(f"{colorama.Fore.CYAN}Created 'binary' response ")
-        elif self.jsonheader["content_type"] == "command":
+        elif self.jsonheader.content_type == "command":
             # if a cc command is given
             # TODO: Do something with output, the subprocess return code
             content_bytes, output = self._create_response_command()
@@ -312,6 +217,9 @@ class Message:
             header.update(output)
 
             print(f"{colorama.Fore.YELLOW}Created 'command' response")
+        else:
+            # TODO: generic command passed in
+            pass
 
         message = self._create_message(header, content_bytes)
         self.response_created = True

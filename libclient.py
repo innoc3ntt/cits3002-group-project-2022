@@ -1,57 +1,20 @@
-import sys
-import selectors
-import json
-import io
-import struct
+import sys, logging, selectors, json, io, struct
+
 import dotsi
 
+from liball import MessageAll
 
-class Message:
+
+class Message(MessageAll):
     def __init__(self, selector, sock, addr, request):
-        self.selector = selector
-        self.sock = sock
-        self.addr = addr
+        super().__init__(selector, sock, addr)
         self.request = request
         self._recv_buffer = b""
         self._send_buffer = b""
-        self._request_queued = False
         self._jsonheader_len = None
         self.jsonheader = None
         self.response = None
-
-    def _set_selector_events_mask(self, mode):
-        """Set selector to listen for events: mode is 'r', 'w', or 'rw'."""
-        if mode == "r":
-            events = selectors.EVENT_READ
-        elif mode == "w":
-            events = selectors.EVENT_WRITE
-        elif mode == "rw":
-            events = selectors.EVENT_READ | selectors.EVENT_WRITE
-        else:
-            raise ValueError(f"Invalid events mask mode {mode!r}.")
-        self.selector.modify(self.sock, events, data=self)
-
-    def update_request(self, request):
-        self.request = request
-        self._recv_buffer = b""
-        self._send_buffer = b""
         self._request_queued = False
-        self._jsonheader_len = None
-        self.jsonheader = None
-        self.response = None
-
-    def _read(self):
-        try:
-            # Should be ready to read
-            data = self.sock.recv(4096)
-        except BlockingIOError:
-            # Resource temporarily unavailable (errno EWOULDBLOCK)
-            pass
-        else:
-            if data:
-                self._recv_buffer += data
-            else:
-                raise RuntimeError("Peer closed.")
 
     def _write(self):
         request = self.request.type
@@ -72,15 +35,6 @@ class Message:
                 pass
             else:
                 self._send_buffer = self._send_buffer[sent:]
-
-    def _json_encode(self, obj, encoding):
-        return json.dumps(obj, ensure_ascii=False).encode(encoding)
-
-    def _json_decode(self, json_bytes, encoding):
-        tiow = io.TextIOWrapper(io.BytesIO(json_bytes), encoding=encoding, newline="")
-        obj = json.load(tiow)
-        tiow.close()
-        return obj
 
     def _create_message(self, header, content_bytes):
         jsonheader = dotsi.Dict(
@@ -108,16 +62,12 @@ class Message:
         # compile file sent by server!
 
         content = self.response
+        exit_status = self.jsonheader.exit_status
         filename = self.jsonheader.filename
-        print(f">>> Received {filename} from server")
+        print(f">>> Received file: {filename} from server")
+        print(f">>> Subprocess exited {exit_status}")
         with open(filename, "wb") as f:
             f.write(content)
-
-    def process_events(self, mask):
-        if mask & selectors.EVENT_READ:
-            self.read()
-        if mask & selectors.EVENT_WRITE:
-            self.write()
 
     def read(self):
         self._read()
@@ -144,84 +94,72 @@ class Message:
                 # Set selector to listen for read events, we're done writing.
                 self._set_selector_events_mask("r")
 
-    def close(self):
-        print(f"Closing connection to {self.addr}")
-        try:
-            self.selector.unregister(self.sock)
-        except Exception as e:
-            print(f"Error: selector.unregister() exception for " f"{self.addr}: {e!r}")
+    def update_request(self, request):
+        self.request = request
+        self._recv_buffer = b""
+        self._send_buffer = b""
+        self._request_queued = False
+        self._jsonheader_len = None
+        self.jsonheader = None
+        self.response = None
 
-        try:
-            self.sock.close()
-        except OSError as e:
-            print(f"Error: socket.close() exception for {self.addr}: {e!r}")
-        finally:
-            # Delete reference to socket object for garbage collection
-            self.sock = None
+        events = selectors.EVENT_WRITE
+
+        self.selector.modify(self.sock, events=events, data=self)
 
     def queue_request(self):
         content = self.request.content
         content_type = self.request.type
         content_encoding = self.request.encoding
-        action = 2
+
+        header = dotsi.Dict()
 
         if content_type == "text/json":
             content_bytes = self._json_encode(content, content_encoding)
-            header = {
-                "content_type": content_type,
-                "content_encoding": content_encoding,
-                "action": action,
-            }
+            header.update(
+                {
+                    "content_type": content_type,
+                    "content_encoding": content_encoding,
+                }
+            )
         elif content_type == "command":
             content_bytes = self._json_encode(content, content_encoding)
-            header = {
-                "content_type": content_type,
-                "content_encoding": content_encoding,
-                "action": action,
-            }
+            header.update(
+                {
+                    "content_type": content_type,
+                    "content_encoding": content_encoding,
+                }
+            )
         else:
             content_bytes = content
             filename = self.request.filename
-            header = {
-                "content_type": content_type,
-                "content_encoding": content_encoding,
-                "filename": filename,
-            }
+            header.update(
+                {
+                    "content_type": content_type,
+                    "content_encoding": content_encoding,
+                    "filename": filename,
+                }
+            )
+
+        if "keep_connection_alive" in self.request.keys():
+            header.update({"keep_connection_alive": self.request.keep_connection_alive})
 
         message = self._create_message(header, content_bytes)
         self._send_buffer += message
         self._request_queued = True
 
-    def process_protoheader(self):
-        hdrlen = 2
-        if len(self._recv_buffer) >= hdrlen:
-            self._jsonheader_len = struct.unpack(">H", self._recv_buffer[:hdrlen])[0]
-            self._recv_buffer = self._recv_buffer[hdrlen:]
-
-    def process_jsonheader(self):
-        hdrlen = self._jsonheader_len
-        if len(self._recv_buffer) >= hdrlen:
-            self.jsonheader = self._json_decode(self._recv_buffer[:hdrlen], "utf-8")
-            self._recv_buffer = self._recv_buffer[hdrlen:]
-            for reqhdr in (
-                "byteorder",
-                "content_length",
-                "content_type",
-                "content_encoding",
-                # "action",
-            ):
-                if reqhdr not in self.jsonheader:
-                    raise ValueError(f"Missing required header '{reqhdr}'.")
-
     def process_response(self):
         self.jsonheader = dotsi.fy(self.jsonheader)
+
         content_len = self.jsonheader.content_length
         if not len(self._recv_buffer) >= content_len:
             return
+
         data = self._recv_buffer[:content_len]
         self._recv_buffer = self._recv_buffer[content_len:]
 
         if self.jsonheader.content_type == "text/json":
+            # if json content
             encoding = self.jsonheader["content_encoding"]
             self.response = self._json_decode(data, encoding)
             print(f">>> Received response {self.response!r} from {self.addr}")

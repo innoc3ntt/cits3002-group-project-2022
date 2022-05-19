@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import sys
 import socket
 import selectors
@@ -18,12 +16,11 @@ def accept_wrapper(sock):
     sel.register(conn, selectors.EVENT_READ, data=message)
 
 
-# if len(sys.argv) != 3:
-#     print(f"Usage: {sys.argv[0]} <host> <port>")
-#     sys.exit(1)
-host = "127.0.0.1"
-port = 65432
-# host, port = sys.argv[1], int(sys.argv[2])
+if len(sys.argv) != 3:
+    print(f"Usage: {sys.argv[0]} <host> <port>")
+    sys.exit(1)
+
+host, port = sys.argv[1], int(sys.argv[2])
 lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 # Avoid bind() exception: OSError: [Errno 48] Address already in use
