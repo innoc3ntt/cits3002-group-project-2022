@@ -1,11 +1,26 @@
-import sys
-import socket
-import selectors
-import traceback
+import sys, socket, selectors, traceback, logging
 
 import libserver
 
 sel = selectors.DefaultSelector()
+logging.basicConfig(filename="logs/servers.log", filemode="w", level=logging.DEBUG)
+logger = logging.getLogger("server")
+formatter = logging.Formatter(
+    "%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"
+)
+
+fh = logging.FileHandler(filename="logs/server.log", mode="w")
+fh.setLevel(logging.DEBUG)
+fh.setFormatter(formatter)
+logger.addHandler(fh)
+
+
+ch = logging.StreamHandler()
+ch.setLevel(logging.DEBUG)
+ch.setFormatter(formatter)
+logger.addHandler(ch)
+
+logger.info("================= STARTING LOG ========================")
 
 
 def accept_wrapper(sock):

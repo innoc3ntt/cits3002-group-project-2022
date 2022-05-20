@@ -4,6 +4,7 @@ import dotsi, colorama
 
 from liball import MessageAll
 
+logger = logging.getLogger("server")
 random.seed(time.time())
 colorama.init(autoreset=True)
 
@@ -54,7 +55,7 @@ class Message(MessageAll):
                     and self.jsonheader.keep_connection_alive > 0
                 ):
                     self.reset()
-                    print(f"<<< Keep connection alive for ${self.addr} >>>")
+                    logger.info(f"<<< Keep connection alive for ${self.addr} >>>")
 
                 elif sent and not self._send_buffer:
                     self.close()
@@ -79,21 +80,24 @@ class Message(MessageAll):
         if request == "query":
             time.sleep(random.randint(0, 5))
             content = {"cost": random.randint(0, 100)}
-            print(f"{colorama.Fore.YELLOW}Sending: {content}")
+            logger.info(f">>> Responding to query with: {content}")
         else:
             content = {"result": f"Error: invalid action."}
+            logger.error(">>> Invalid action provided")
         return content
 
     def _create_response_command(self):
         self.request = dotsi.fy(self.request)
         command = self.request.command
 
+        logging.debug(f"Command is ${command}")
+
         if self.directory is not None:
             directory = self.directory
         else:
             directory = os.getcwd()
 
-        print(f"{colorama.Fore.RED}Running CMD: {command}")
+        logging.info(f"===== Running command: {command} =====")
 
         process = subprocess.run(
             command, check=True, capture_output=True, cwd=directory
@@ -120,9 +124,9 @@ class Message(MessageAll):
 
         logging.debug(f"Output: {output.output}, exit_status: {output.exit_status}")
 
-        if "tmp" in self.directory:
+        if self.directory is not None and "tmp" in self.directory:
             # cleanup tmp dir
-            print(f"=== Removing ${self.directory} ===")
+            logger.info(f"=== Removing ${self.directory} ===")
             shutil.rmtree(self.directory)
 
         return (data, output)
@@ -163,15 +167,15 @@ class Message(MessageAll):
             # if json content
             encoding = self.jsonheader.content_encoding
             self.request = self._json_decode(data, encoding)
-            print(f">>> Received request {self.request!r} from {self.addr}")
+            logger.info(f">>> Received request {self.request!r} from {self.addr}")
 
         elif self.jsonheader.content_type == "binary":
             # File recieved
             self.request = data
             filename = self.jsonheader.filename
 
-            print(
-                f"{colorama.Fore.RED}>>> Received {self.jsonheader.content_type} "
+            logger.info(
+                f">>> Received {self.jsonheader.content_type} "
                 f"request from {self.addr}"
             )
 
@@ -184,13 +188,15 @@ class Message(MessageAll):
             with open(fullpath, "wb") as f:
                 f.write(data)
 
-            print(f"=== File:{filename} written to ${fullpath} ===")
+            logger.info(f"=== File:{filename} written to ${fullpath} ===")
 
         elif self.jsonheader.content_type == "command":
             # if a command is given
             encoding = self.jsonheader.content_encoding
             self.request = self._json_decode(data, encoding)
-            print(f"{colorama.Fore.GREEN}>>> Received command request from {self.addr}")
+            logger.info(
+                f"{colorama.Fore.GREEN}>>> Received command request from {self.addr}"
+            )
 
         # Set selector to listen for write events, we're done reading.
         self._set_selector_events_mask("w")
@@ -205,7 +211,7 @@ class Message(MessageAll):
                     "content_encoding": "utf-8",
                 }
             )
-            print(f"{colorama.Fore.CYAN}Created 'query/json' response ")
+            logger.info(f"{colorama.Fore.CYAN}Created 'query/json' response ")
         elif self.jsonheader.content_type == "binary":
             # Binary or unknown content_type
             content_bytes = b">>>First 10 bytes of request: " + self.request[:10]
@@ -228,7 +234,7 @@ class Message(MessageAll):
             )
             header.update(output)
 
-            print(f"{colorama.Fore.YELLOW}Created 'command' response")
+            logger.info(f"{colorama.Fore.YELLOW}Created 'command' response")
         else:
             # TODO: generic command passed in
             pass
