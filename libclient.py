@@ -38,10 +38,11 @@ def start_connection(sel, host, port, request):
         request (dict): dictionary
     """
     addr = (host, port)
-    logger.info(f"<<< Starting connection to {addr}")
+
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setblocking(False)
     sock.connect_ex(addr)
+    logger.info(f"<<< Starting connection to {addr} on {sock.fileno()}")
     events = selectors.EVENT_READ | selectors.EVENT_WRITE
     message = libclient.Message(sel, sock, addr, request)
     sel.register(sock, events, data=message)
@@ -186,15 +187,16 @@ class Message(MessageAll):
     def _process_response_command(self):
         # compile file sent by server!
         exit_status = self.jsonheader.exit_status
-        filename = self.jsonheader.filename
-        logger.info(f">>> Received file: {filename} from {self.addr}")
+
         if exit_status == 0:
             logger.info(f">>> Subprocess exited succesfully")
+            filename = self.jsonheader.filename
+            logger.info(f">>> Received file: {filename} from {self.addr}")
+            with open(filename, "wb") as f:
+                f.write(self.response)
         else:
             logger.error(f">>> Subprocess exited non-zero")
-
-        with open(filename, "wb") as f:
-            f.write(self.response)
+            raise SubprocessFailedError(f"{self.jsonheader.output}")
 
     def read(self):
         self._read()
@@ -337,3 +339,7 @@ class Message(MessageAll):
             ):
                 if reqhdr not in self.jsonheader:
                     raise ValueError(f"Missing required header '{reqhdr}'.")
+
+
+class SubprocessFailedError(Exception):
+    pass

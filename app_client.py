@@ -2,10 +2,12 @@ import logging, traceback, selectors, yaml, logging.config
 import time
 import sys
 
-import colorama, dotsi
-from parser import parse_file
+import dotsi
 
+
+from parser import parse_file
 from libclient import (
+    SubprocessFailedError,
     create_request,
     reuse_connection,
     start_connection,
@@ -24,8 +26,6 @@ logger = logging.getLogger("client")
 
 
 logger.info("================= STARTING LOG ========================")
-colorama.init(autoreset=True)
-
 
 """
 in an action set, for each action, run a query to all hosts
@@ -110,8 +110,9 @@ def event_loop(addresses, actions):
                 time.sleep(1)
                 message = key.data
                 try:
-                    message.process_events(mask)
                     socket_no = key.fd
+                    message.process_events(mask)
+
                     if message.response:
                         if message.jsonheader.content_type == "text/json":
                             # Process the server response to query request, if there is a response and type is query
@@ -219,8 +220,16 @@ def event_loop(addresses, actions):
                 except ConnectionRefusedError as e:
                     logger.debug(f"{socket_no}")
                     logger.debug(f"{queue}")
-                    logger.error(f"{e} on {message.addr}")
+                    logger.error(f"{e} to {message.addr} on {socket_no}")
+
+                    queue.remove(socket_no)
                     message.close()
+                except SubprocessFailedError as e:
+                    logger.critical(
+                        f"Subprocess failed: {e} on request:{message.request.content.command} for action: {action_num}"
+                    )
+                    logger.critical(f"Stopping client")
+                    exit(1)
                 except Exception:
                     logger.error(
                         f"Main: Error: Exception for {message.addr}:\n"

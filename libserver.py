@@ -89,7 +89,7 @@ class Message(MessageAll):
     def _create_response_command(self):
         self.request = dotsi.fy(self.request)
         command = self.request.command
-
+        data = b""
         logging.debug(f"Command is ${command}")
 
         if self.directory is not None:
@@ -98,29 +98,31 @@ class Message(MessageAll):
             directory = os.getcwd()
 
         logging.info(f"===== Running command: {command} =====")
+        try:
+            process = subprocess.run(
+                command, check=True, capture_output=True, cwd=directory
+            )
 
-        process = subprocess.run(
-            command, check=True, capture_output=True, cwd=directory
-        )
+            output = dotsi.Dict(
+                {
+                    "output": process.stdout.decode("utf-8"),
+                    "exit_status": process.returncode,
+                }
+            )
 
-        output = dotsi.Dict(
-            {
-                "output": process.stdout.decode("utf-8"),
-                "exit_status": process.returncode,
-            }
-        )
+            if process.returncode == 0:
+                # get compiled file which is presumably the newest file
+                latest_file = get_latest_file(directory)
+                filename = os.path.basename(latest_file)
+                output.update({"filename": filename})
+                # send back the compiled file
+                with open(latest_file, "rb") as f:
+                    data = f.read()
 
-        if process.returncode == 0:
-            # get compiled file which is presumably the newest file
-            latest_file = get_latest_file(directory)
-            filename = os.path.basename(latest_file)
-            output.update({"filename": filename})
-            # send back the compiled file
-            with open(latest_file, "rb") as f:
-                data = f.read()
-
-        else:
-            logging.exception("Subprocess exited non-zero")
+        except subprocess.CalledProcessError as e:
+            output = dotsi.Dict(
+                {"output": e.stderr.decode("utf-8"), "exit_status": e.returncode}
+            )
 
         logging.debug(f"Output: {output.output}, exit_status: {output.exit_status}")
 
