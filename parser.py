@@ -34,12 +34,12 @@ def parse_file(filename):
                 actions.append([line.split()[0]])
                 buffer = []
 
-            elif re.match(r"^\s{4}[a-z]", line):
+            elif re.match(r"^\s{4}[a-z]|\t{1}[a-z]", line):
                 # if line begins with 4 spaces/1 tab, defines a command
                 # FIXME: Convert to tabs instead of spaces
                 actions[-1].append(line.split())
 
-            elif re.match(r"^\s{8}[a-z]", line):
+            elif re.match(r"^\s{8}[a-z]|\t{2}[a-z]", line):
                 # if line beings with 8 spaces/2 tabs, defines additional arguments
                 # FIXME: Convert to tabs instead of spaces
                 actions[-1][-1].append(line.split())
