@@ -4,6 +4,15 @@ from parser import parse_file
 
 logging.basicConfig(filename="output.log", filemode="w", level=logging.DEBUG)
 
+ch = logging.StreamHandler()
+ch.setLevel(logging.DEBUG)
+
+formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+ch.setFormatter(formatter)
+
+logger = logging.getLogger()
+logger.addHandler(ch)
+
 
 def main():
     logging.info("Parsing rakefile")

@@ -1,4 +1,5 @@
 import logging, traceback, selectors
+import time
 import sys
 
 import colorama, dotsi
@@ -9,7 +10,7 @@ from libclient import (
     reuse_connection,
     start_connection,
     in_list,
-    query,
+    send_query,
     send_file,
 )
 
@@ -31,7 +32,7 @@ ch.setLevel(logging.DEBUG)
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
-logger.info("=================STARTING LOG========================")
+logger.info("================= STARTING LOG ========================")
 colorama.init(autoreset=True)
 
 
@@ -55,10 +56,11 @@ def event_loop(addresses, actions):
     queries = [[] for x in actions]
     running_socket = [-1 for x in actions]
     again = [-1 for x in actions]
+    query_action_num = 0
 
     for index, action in enumerate(actions):
         # for each action, get required files in a buffer and send a query to all hosts
-        fd_action = []
+
         if action[-1][0] == "requires":
             # find all the files required and put them in a buffer
             for file in action[-1][1:]:
@@ -66,22 +68,31 @@ def event_loop(addresses, actions):
             # remove the empty require
             action.pop()
 
-        logger.info(f"Querying cost for action: {index}")
+    def query():
+        logger.info(f"Querying cost for action: {query_action_num}")
+        fd_action = []
         for address in addresses:
             # for each host, query the cost for an action
             host, port = address
-            fd_action.append(query(sel, host, port))
-
-        # add to a queue, the socket_fd's used for each action
+            fd_action.append(send_query(sel, host, port))
         queues.append(fd_action)
+
+    my_iter = iter(actions)
+    # add to a queue, the socket_fd's used for each action
 
     try:
         while True:
             events = sel.select(timeout=1)
-            for key, mask in events:
-                message = key.data
+            try:
+                next(my_iter)
+                query_action_num += 1
+                query()
+            except StopIteration:
+                pass
 
-                """experimental"""
+            for key, mask in events:
+                time.sleep(2)
+                message = key.data
                 try:
                     message.process_events(mask)
                     socket_no = key.fd
@@ -90,7 +101,6 @@ def event_loop(addresses, actions):
                     if message.response and (
                         message.jsonheader.content_type == "text/json"
                     ):
-
                         # Process the server response to query request, if there is a response and type is query
                         if action_n != -1:
                             # If there is a socket being awaited on, remove it from queue and store result

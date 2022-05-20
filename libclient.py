@@ -64,7 +64,7 @@ def reuse_connection(message, filename=None, command=None, keep_connection_alive
     message.update_request(request)
 
 
-def query(sel, host, port):
+def send_query(sel, host, port):
     """Wrapper around start_connection to be called for each action to each host"""
     query = create_request("query")
     return start_connection(sel, host, port, query)
