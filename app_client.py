@@ -9,7 +9,6 @@ from libclient import (
     create_request,
     reuse_connection,
     start_connection,
-    in_list,
     send_query,
     send_file,
 )
@@ -19,7 +18,6 @@ logger = logging.getLogger("client")
 formatter = logging.Formatter(
     "%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"
 )
-
 
 fh = logging.FileHandler(filename="logs/client.log", mode="w")
 fh.setLevel(logging.DEBUG)
@@ -51,16 +49,15 @@ def event_loop(addresses, actions):
     sel = selectors.DefaultSelector()
 
     # buffers to hold connection data per action
-    queues = []
+    queue = []
+    queries = []
     requires = [[] for x in actions]
-    queries = [[] for x in actions]
-    running_socket = [-1 for x in actions]
-    again = [-1 for x in actions]
-    query_action_num = 0
+    ready_to_begin = [False for x in actions]
+    alive_connections = [-1 for x in actions]
+    action_number_sent = 0
 
     for index, action in enumerate(actions):
         # for each action, get required files in a buffer and send a query to all hosts
-
         if action[-1][0] == "requires":
             # find all the files required and put them in a buffer
             for file in action[-1][1:]:
@@ -68,138 +65,140 @@ def event_loop(addresses, actions):
             # remove the empty require
             action.pop()
 
-    def query():
-        logger.info(f"Querying cost for action: {query_action_num}")
-        fd_action = []
+    def _query():
+        logger.info(f"Querying cost for action: {action_number_sent}")
         for address in addresses:
             # for each host, query the cost for an action
             host, port = address
-            fd_action.append(send_query(sel, host, port))
-        queues.append(fd_action)
+            queue.append(send_query(sel, host, port))
 
+    # create an iterator to send query requests
     my_iter = iter(actions)
-    # add to a queue, the socket_fd's used for each action
+
+    """BEGIN QUERY"""
+    next(my_iter)
+    _query()
 
     try:
         while True:
             events = sel.select(timeout=1)
-            try:
-                next(my_iter)
-                query_action_num += 1
-                query()
-            except StopIteration:
-                pass
 
             for key, mask in events:
-                time.sleep(2)
+                time.sleep(1)
                 message = key.data
                 try:
                     message.process_events(mask)
                     socket_no = key.fd
-                    action_n = in_list(socket_no, queues)
-
-                    if message.response and (
-                        message.jsonheader.content_type == "text/json"
-                    ):
-                        # Process the server response to query request, if there is a response and type is query
-                        if action_n != -1:
+                    if message.response:
+                        if message.jsonheader.content_type == "text/json":
+                            # Process the server response to query request, if there is a response and type is query
                             # If there is a socket being awaited on, remove it from queue and store result
-                            queues[action_n].remove(socket_no)
-                            queries[action_n].append(
+                            queue.remove(socket_no)
+                            queries.append(
                                 {
                                     "address": message.addr,
                                     "cost": message.response["cost"],
                                 }
                             )
-                            if not queues[action_n]:
-                                # if after dequeing, that was the last socket being awaited on for queries, ready to send next
-                                running_socket[action_n] = 1
+                            if not queue:
+                                # if after dequeing, all queries have returned, ready to send action and query for next action
+                                ready_to_begin[action_number_sent] = True
 
-                    if again.count(socket_no) > 0:
-                        action_num = again.index(socket_no)
+                                try:
+                                    # while there are actions
+                                    next(my_iter)
+                                    _query()
+                                except StopIteration:
+                                    pass
 
-                    elif running_socket.count(1) > 0:
-                        action_num = running_socket.index(1)
+                                action_number_sent += 1
 
-                    if message.response and (
-                        again.count(socket_no) > 0 or running_socket.count(1) > 0
-                    ):
-                        """
-                        if for an action, not waiting for any more sockets to return from query request
+                        """For returned connections"""
+                        if socket_no in alive_connections:
+                            """If it is for an existing connection, check which action it is for"""
+                            action_num = alive_connections.index(socket_no)
 
-                        determine the lowest bid and send the relevant action
-                        by starting a new connection with different request
-                        """
+                        elif ready_to_begin.count(True) > 0:
+                            """Ready to begin a new action set"""
+                            action_num = ready_to_begin.index(True)
 
-                        if (
-                            requires[action_num]
-                            and message.jsonheader.content_type == "text/json"
-                        ):
-                            # if its a query response coming back, initiate file transfers
-                            minCost = dotsi.fy(
-                                min(queries[action_num], key=lambda x: x["cost"])
-                            )
-                            host, port = minCost.address
+                        else:
+                            """Is not one of the above options"""
+                            action_num = -1
 
-                            file = requires[action_num].pop(0)
-                            logger.info(
-                                f"Starting action: {action_num} with lowest cost of {minCost.cost} to address {minCost.address}"
-                            )
-                            monitor_socket = send_file(
-                                filename=file,
-                                address=(host, port),
-                                sel=sel,
-                                socket=None,
-                            )
-                            running_socket[action_num] = -1
-                            again[action_num] = monitor_socket
-                        elif (
-                            again[action_num] > 0
-                            and requires[action_num]
-                            and message.jsonheader.content_type == "binary"
-                        ):
+                        if action_num >= 0:
                             """
-                            if its a binary response, files was sent succesfully
-                            if there are any additional files to be sent, update the message
-                            """
-                            file = requires[action_num].pop(0)
-                            reuse_connection(message, filename=file)
-                        elif (
-                            message.jsonheader.content_type == "binary"
-                            and not requires[action_num]
-                        ):
-                            """if its a binary response and no more files to send, send the command"""
-                            action_to_do = actions[action_num]
-                            temp = action_to_do[0].split("-")
-                            if "remote" in temp:
-                                action_to_do[0] = temp[1]
-                                reuse_connection(
-                                    message,
-                                    command=action_to_do,
-                                    keep_connection_alive=False,
-                                )
+                            if for an action, not waiting for any more sockets to return from query request
 
-                            running_socket[action_num] = -1
-                        elif (
-                            not requires[action_num]
-                            and message.jsonheader.content_type == "text/json"
-                        ):
+                            determine the lowest bid and send the relevant action
+                            by starting a new connection with different request
                             """
-                            else no files to send, just send the command, returning message is from a query
-                            """
-                            action_to_do = actions[action_num]
-                            temp = action_to_do[0].split("-")
-                            if "remote" in temp:
-                                action_to_do[0] = temp[1]
 
-                            command_request = create_request(
-                                "command",
-                                command=action_to_do,
-                                keep_connection_alive=False,
-                            )
-                            start_connection(sel, host, port, command_request)
-                            running_socket[action_num] = -1
-                            again[action_num] = -1
+                            if requires[action_num]:
+                                """If file needs to be sent for current action"""
+                                if message.jsonheader.content_type == "text/json":
+                                    """if its a query response coming back, start file transfer for action"""
+                                    minCost = dotsi.fy(
+                                        min(queries, key=lambda x: x["cost"])
+                                    )
+                                    host, port = minCost.address
+                                    file = requires[action_num].pop(0)
+                                    logger.info(
+                                        f"Starting action: {action_num} with lowest cost of {minCost.cost} to address {minCost.address}"
+                                    )
+                                    monitor_socket = send_file(
+                                        filename=file,
+                                        address=(host, port),
+                                        sel=sel,
+                                        socket=None,
+                                    )
+                                    # began the action, mark back false
+                                    ready_to_begin[action_num] = False
+                                    # keep track of which action to whick socket
+                                    alive_connections[action_num] = monitor_socket
+                                elif (
+                                    alive_connections[action_num] > 0
+                                    and message.jsonheader.content_type == "binary"
+                                ):
+                                    """
+                                    if its a binary response, from an existing connection, previous file was sent succesfully
+                                    send next file, update the message
+                                    """
+                                    file = requires[action_num].pop(0)
+                                    reuse_connection(message, filename=file)
+                            else:
+                                """no files to send or all files have beeen sent"""
+                                if message.jsonheader.content_type == "binary":
+                                    """returning connection from sending a file"""
+                                    print(message.jsonheader)
+                                    action_to_do = actions[action_num]
+                                    temp = action_to_do[0].split("-")
+
+                                    if "remote" in temp:
+                                        action_to_do[0] = temp[1]
+
+                                    reuse_connection(
+                                        message,
+                                        command=action_to_do,
+                                        keep_connection_alive=False,
+                                    )
+
+                                    ready_to_begin[action_num] = False
+                                elif message.jsonheader.content_type == "text/json":
+                                    """else no files to send, first request so just send the command, returning message is from a query"""
+                                    action_to_do = actions[action_num]
+                                    temp = action_to_do[0].split("-")
+
+                                    if "remote" in temp:
+                                        action_to_do[0] = temp[1]
+
+                                    command_request = create_request(
+                                        "command",
+                                        command=action_to_do,
+                                        keep_connection_alive=False,
+                                    )
+                                    start_connection(sel, host, port, command_request)
+                                    ready_to_begin[action_num] = False
 
                 except Exception:
                     print(

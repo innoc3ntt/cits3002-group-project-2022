@@ -38,7 +38,7 @@ def start_connection(sel, host, port, request):
         request (dict): dictionary
     """
     addr = (host, port)
-    logger.info(f">>> Starting connection to {addr}")
+    logger.info(f"<<< Starting connection to {addr}")
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setblocking(False)
     sock.connect_ex(addr)
