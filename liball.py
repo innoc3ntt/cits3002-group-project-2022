@@ -54,21 +54,6 @@ class MessageAll:
         if mask & selectors.EVENT_WRITE:
             self.write()
 
-    def close(self):
-        print(f"=== Closing connection to {self.addr} ===")
-        try:
-            self.selector.unregister(self.sock)
-        except Exception as e:
-            print(f"Error: selector.unregister() exception for " f"{self.addr}: {e!r}")
-
-        try:
-            self.sock.close()
-        except OSError as e:
-            print(f"Error: socket.close() exception for {self.addr}: {e!r}")
-        finally:
-            # Delete reference to socket object for garbage collection
-            self.sock = None
-
     def process_protoheader(self):
         hdrlen = 2
         if len(self._recv_buffer) >= hdrlen:

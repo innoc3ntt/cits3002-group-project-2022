@@ -312,7 +312,9 @@ class Message(MessageAll):
         try:
             self.selector.unregister(self.sock)
         except Exception as e:
-            print(f"Error: selector.unregister() exception for " f"{self.addr}: {e!r}")
+            logger.error(
+                f"Error: selector.unregister() exception for " f"{self.addr}: {e!r}"
+            )
 
         try:
             self.sock.close()

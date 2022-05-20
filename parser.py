@@ -1,5 +1,6 @@
-import sys
-import re
+import sys, re, logging
+
+logger = logging.getLogger("client")
 
 
 def parse_file(filename):
@@ -76,8 +77,8 @@ def main():
 
     addresses, actions = parse_file(sys.argv[1])
 
-    print(addresses)
-    print(actions)
+    logger.debug(addresses)
+    logger.debug(actions)
 
 
 if __name__ == "__main__":

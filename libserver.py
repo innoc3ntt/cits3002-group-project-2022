@@ -194,9 +194,7 @@ class Message(MessageAll):
             # if a command is given
             encoding = self.jsonheader.content_encoding
             self.request = self._json_decode(data, encoding)
-            logger.info(
-                f"{colorama.Fore.GREEN}>>> Received command request from {self.addr}"
-            )
+            logger.info(f">>> Received command request from {self.addr}")
 
         # Set selector to listen for write events, we're done reading.
         self._set_selector_events_mask("w")
@@ -211,17 +209,15 @@ class Message(MessageAll):
                     "content_encoding": "utf-8",
                 }
             )
-            logger.info(f"{colorama.Fore.CYAN}Created 'query/json' response ")
         elif self.jsonheader.content_type == "binary":
             # Binary or unknown content_type
-            content_bytes = b">>>First 10 bytes of request: " + self.request[:10]
+            content_bytes = b"First 10 bytes of request: " + self.request[:10]
             header = dotsi.Dict(
                 {
                     "content_type": "binary",
                     "content_encoding": "binary",
                 }
             )
-            print(f"{colorama.Fore.CYAN}Created 'binary' response ")
         elif self.jsonheader.content_type == "command":
             # if a cc command is given
             # TODO: Do something with output, the subprocess return code
@@ -233,8 +229,6 @@ class Message(MessageAll):
                 }
             )
             header.update(output)
-
-            logger.info(f"{colorama.Fore.YELLOW}Created 'command' response")
         else:
             # TODO: generic command passed in
             pass
@@ -256,3 +250,20 @@ class Message(MessageAll):
             ):
                 if reqhdr not in self.jsonheader:
                     raise ValueError(f"Missing required header '{reqhdr}'.")
+
+    def close(self):
+        logger.info(f"=== Closing connection to {self.addr} ===")
+        try:
+            self.selector.unregister(self.sock)
+        except Exception as e:
+            logger.error(
+                f"Error: selector.unregister() exception for " f"{self.addr}: {e!r}"
+            )
+
+        try:
+            self.sock.close()
+        except OSError as e:
+            logger.error(f"Error: socket.close() exception for {self.addr}: {e!r}")
+        finally:
+            # Delete reference to socket object for garbage collection
+            self.sock = None

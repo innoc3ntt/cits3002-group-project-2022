@@ -1,4 +1,4 @@
-import logging, traceback, selectors
+import logging, traceback, selectors, yaml, logging.config
 import time
 import sys
 
@@ -16,21 +16,12 @@ from libclient import (
 LOCAL_PORT = 8000
 
 logging.basicConfig(filename="logs/clients.log", filemode="w", level=logging.DEBUG)
+with open("logger.yaml", "rt") as f:
+    logging_config = yaml.safe_load(f.read())
+
+logging.config.dictConfig(logging_config)
 logger = logging.getLogger("client")
-formatter = logging.Formatter(
-    "%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"
-)
 
-fh = logging.FileHandler(filename="logs/client.log", mode="w")
-fh.setLevel(logging.DEBUG)
-fh.setFormatter(formatter)
-logger.addHandler(fh)
-
-
-ch = logging.StreamHandler()
-ch.setLevel(logging.DEBUG)
-ch.setFormatter(formatter)
-logger.addHandler(ch)
 
 logger.info("================= STARTING LOG ========================")
 colorama.init(autoreset=True)
@@ -80,6 +71,7 @@ def event_loop(addresses, actions):
             _query()
         else:
             host, port = "localhost", LOCAL_PORT
+            logger.info(f"=== Sending a request to localhost for {action_n} ===")
 
             if requires[action_n]:
                 # if files required, start sending
@@ -224,19 +216,22 @@ def event_loop(addresses, actions):
 
                                     start_connection(sel, host, port, command_request)
                                     ready_to_begin[action_num] = False
-
+                except ConnectionRefusedError as e:
+                    logger.debug(f"{socket_no}")
+                    logger.debug(f"{queue}")
+                    logger.error(f"{e} on {message.addr}")
+                    message.close()
                 except Exception:
-                    print(
+                    logger.error(
                         f"Main: Error: Exception for {message.addr}:\n"
                         f"{traceback.format_exc()}"
                     )
                     message.close()
-                    raise RuntimeError("ERROR BRO")
             # Check for a socket being monitored to continue.
             if not sel.get_map():
                 break
     except KeyboardInterrupt:
-        print("Caught keyboard interrupt, exiting")
+        logger.error("Caught keyboard interrupt, exiting")
     finally:
         sel.close()
 
@@ -256,9 +251,9 @@ def main():
         actions = action_set[1:]
         try:
             event_loop(addresses, actions)
+            logger.info(f"Actionset {index} completed successfully")
         except RuntimeError as e:
             logger.exception(e)
-            raise RuntimeError(e)
 
 
 if __name__ == "__main__":

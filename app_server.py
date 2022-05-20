@@ -1,31 +1,23 @@
-import sys, socket, selectors, traceback, logging
+import sys, socket, selectors, traceback, logging, logging.config, yaml
 
 import libserver
 
+
 sel = selectors.DefaultSelector()
+
 logging.basicConfig(filename="logs/servers.log", filemode="w", level=logging.DEBUG)
+with open("logger.yaml", "rt") as f:
+    logging_config = yaml.safe_load(f.read())
+
+logging.config.dictConfig(logging_config)
 logger = logging.getLogger("server")
-formatter = logging.Formatter(
-    "%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"
-)
-
-fh = logging.FileHandler(filename="logs/server.log", mode="w")
-fh.setLevel(logging.DEBUG)
-fh.setFormatter(formatter)
-logger.addHandler(fh)
-
-
-ch = logging.StreamHandler()
-ch.setLevel(logging.DEBUG)
-ch.setFormatter(formatter)
-logger.addHandler(ch)
 
 logger.info("================= STARTING LOG ========================")
 
 
 def accept_wrapper(sock):
     conn, addr = sock.accept()  # Should be ready to read
-    print(f"Accepted connection from {addr}")
+    logger.info(f">>> Accepted connection from {addr}")
     conn.setblocking(False)
     message = libserver.Message(sel, conn, addr)
     sel.register(conn, selectors.EVENT_READ, data=message)
@@ -42,7 +34,7 @@ lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 lsock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 lsock.bind((host, port))
 lsock.listen()
-print(f"Listening on {(host, port)}")
+logger.info(f"Listening on {(host, port)}")
 lsock.setblocking(False)
 sel.register(lsock, selectors.EVENT_READ, data=None)
 
@@ -63,6 +55,6 @@ try:
                     )
                     message.close()
 except KeyboardInterrupt:
-    print("Caught keyboard interrupt, exiting")
+    logger.error("Caught keyboard interrupt, exiting")
 finally:
     sel.close()
