@@ -1,6 +1,4 @@
-import logging, traceback, selectors, yaml, logging.config
-import time
-import sys
+import logging, traceback, selectors, yaml, logging.config, time, sys, os
 
 import dotsi
 
@@ -32,6 +30,8 @@ in an action set, for each action, run a query to all hosts
 collect the returned costs, send a request to remote host,
 which may involve sending a file for each action and receiving back a file from each host
 """
+
+os.chdir("./fakerakes")
 
 
 def event_loop(addresses, actions):
@@ -263,6 +263,8 @@ def main():
             logger.info(f"Actionset {index} completed successfully")
         except RuntimeError as e:
             logger.exception(e)
+
+    logger.info("All actionsets completed successfully!")
 
 
 if __name__ == "__main__":
