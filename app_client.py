@@ -1,77 +1,29 @@
-import sys
-import socket
-import selectors
-import traceback
-import os
-import colorama
+import logging, traceback, selectors, yaml, logging.config, time, sys, os
 
-import libclient
+import dotsi
 
 
-sel = selectors.DefaultSelector()
-colorama.init(autoreset=True)
+from parser import parse_file
+from libclient import (
+    SubprocessFailedError,
+    create_request,
+    reuse_connection,
+    start_connection,
+    send_query,
+    send_file,
+)
+
+LOCAL_PORT = 8000
+
+logging.basicConfig(filename="logs/clients.log", filemode="w", level=logging.DEBUG)
+with open("logger.yaml", "rt") as f:
+    logging_config = yaml.safe_load(f.read())
+
+logging.config.dictConfig(logging_config)
+logger = logging.getLogger("client")
 
 
-def create_request(request, action=None, args=None, shell="echo", files=None):
-    """
-    Create a request to pass to start_connection
-    One of three types
-    - query
-    - command
-    - file
-
-    Parameters:
-        request (str): type of request, query, command or file
-        action (int): action number associated with
-        args: extra args to pass to a "command" request
-        shell: command to pass to shell, default echo
-        files: name of files to send
-
-    Returns:
-        (dict) A dictionary representing the request object
-    """
-    if request == "query":
-        return dict(
-            type="text/json",
-            encoding="utf-8",
-            content=dict(request=request),
-            action=action,
-        )
-    elif request == "command":
-        return dict(
-            type="command",
-            encoding="utf-8",
-            content=dict(request=request, shell=shell, args=args, files=files),
-            action=action,
-        )
-    elif request == "file":
-        return dict(type="binary", encoding="binary", content=args, action=action)
-
-
-def start_connection(host, port, request):
-    addr = (host, port)
-    print(f"Starting connection to {addr}")
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setblocking(False)
-    sock.connect_ex(addr)
-    events = selectors.EVENT_READ | selectors.EVENT_WRITE
-    message = libclient.Message(sel, sock, addr, request)
-    sel.register(sock, events, data=message)
-
-    return sock.fileno()
-
-
-# if len(sys.argv) != 5:
-#     print(f"Usage: {sys.argv[0]} <host> <port> <action> <value>")
-#     sys.exit(1)
-
-# host, port = sys.argv[1], int(sys.argv[2])
-# action, value = sys.argv[3], sys.argv[4]
-# request = create_request(action, value)
-
-ports = [65432, 65431]
-
-results = []
+logger.info("================= STARTING LOG ========================")
 
 """
 in an action set, for each action, run a query to all hosts
@@ -79,159 +31,207 @@ collect the returned costs, send a request to remote host,
 which may involve sending a file for each action and receiving back a file from each host
 """
 
-
-def in_list(c, classes):
-    """
-    Convenience function to find which list in a 2D list an integer is in
-
-        Parameters:
-            c (int): The integer to look for
-            classes list[int]: 2D list to search in
-
-        Returns:
-            i (int): index of list containing element, -1 if not found
-    """
-    for i, sublist in enumerate(classes):
-        if c in sublist:
-            return i
-    return -1
+os.chdir("./fakerakes")
 
 
-# first query
-def event_loop(addresses):
+def event_loop(addresses, actions):
     """
     Run for each action in an actionset to query all the connected servers.
     will return the minimum bid server and it's ip address
-
     """
-
-    query = create_request("query", -1)
-
-    # mock the actionset input here
-    actions = [
-        "actionset1:",
-        ["remote-cc", "test.c", ["requires", "test.c"]],
-        ["echo", "hello"],
-    ]
-
-    actionset1 = actions[0]
+    sel = selectors.DefaultSelector()
 
     # buffers to hold connection data per action
-    queues = []
+    queue = []
+    queries = []
     requires = [[] for x in actions]
-    queries = [[] for x in actions]
+    ready_to_begin = [False for x in actions]
+    alive_connections = [-1 for x in actions]
+    action_number_sent = 0
 
-    # mock actionset 1 only first
-    for index, action in enumerate(actions[1:]):
-
-        fd_action = []
+    for index, action in enumerate(actions):
+        # for each action, get required files in a buffer and send a query to all hosts
         if action[-1][0] == "requires":
+            # find all the files required and put them in a buffer
             for file in action[-1][1:]:
                 requires[index].append(file)
-            # remove the require for later processing
+            # remove the empty require
             action.pop()
 
+    def _query():
+        logger.info(f"Querying cost for action: {action_number_sent}")
         for address in addresses:
-            # for each host!
+            # for each host, query the cost for an action
             host, port = address
-            fd = start_connection(host, port, query)
-            fd_action.append(fd)
+            queue.append(send_query(sel, host, port))
 
-        queues.append(fd_action)
+    def _remote_start(action_step, action_n):
+
+        if "remote" in action_step[0]:
+            _query()
+        else:
+            host, port = "localhost", LOCAL_PORT
+            logger.info(f"=== Sending a request to localhost for {action_n} ===")
+
+            if requires[action_n]:
+                # if files required, start sending
+                file = requires[action_n].pop(0)
+                monitor_socket = send_file(
+                    filename=file,
+                    address=(host, port),
+                    sel=sel,
+                    socket=None,
+                )
+                # keep track of which action to whick socket
+                alive_connections[action_n] = monitor_socket
+            else:
+                command_request = create_request(
+                    "command",
+                    command=action_step,
+                    keep_connection_alive=False,
+                )
+                start_connection(sel, host, port, command_request)
+
+    """BEGIN FIRST ACTION WITH QUERY AND CHECK IF REMOTE"""
+
+    try:
+        # create an iterator to send query requests
+        my_iter = iter(actions)
+        _remote_start(next(my_iter), 0)
+    except Exception as e:
+        logger.error(e)
+        raise RuntimeError("Failed at start, problem with the iterator")
 
     try:
         while True:
             events = sel.select(timeout=1)
-            for key, mask in events:
-                message = key.data
 
-                """experimental"""
+            for key, mask in events:
+                time.sleep(1)
+                message = key.data
                 try:
+                    socket_no = key.fd
                     message.process_events(mask)
 
-                    socket_no = key.fd
-                    if message.response and (
-                        message.jsonheader["content-type"] == "text/json"
-                    ):
-                        # TODO: make a file/received type for libclient/libserver
-                        # Process the server response to query request, if there is a response and type is query
-                        action_n = in_list(socket_no, queues)
-
-                        if action_n != -1:
+                    if message.response:
+                        if message.jsonheader.content_type == "text/json":
+                            # Process the server response to query request, if there is a response and type is query
                             # If there is a socket being awaited on, remove it from queue and store result
-                            queues[action_n].remove(socket_no)
-
-                            # print(f"{colorama.Fore.CYAN} Received {message} ")
-
-                            queries[action_n].append(
+                            queue.remove(socket_no)
+                            queries.append(
                                 {
                                     "address": message.addr,
                                     "cost": message.response["cost"],
                                 }
                             )
+                            if not queue:
+                                # if after dequeing, all queries have returned, ready to send action and query for next action
+                                ready_to_begin[action_number_sent] = True
+                                action_number_sent += 1
+                                try:
+                                    # while there are actions
+                                    _remote_start(next(my_iter), action_number_sent)
+                                except StopIteration:
+                                    pass
 
-                        if not queues[action_n]:
+                        """For returned connections"""
+                        if socket_no in alive_connections:
+                            """If it is for an existing connection, check which action it is for"""
+                            action_num = alive_connections.index(socket_no)
+
+                        elif ready_to_begin.count(True) > 0:
+                            """Ready to begin a new action set"""
+                            action_num = ready_to_begin.index(True)
+
+                        else:
                             """
-                            if for an action, not waiting for any more sockets to return
-                            determine the lowest bid and send the relevant action
+                            Is not one of the above options,
+                            - not an existing connection
+                            - not a new action
+                            unrecognized
+                            """
+                            action_num = -1
+
+                        if action_num >= 0:
+                            """
+                            if an existing connection or ready to start a new connection
+
+                            determine the lowest bid for the action and send the relevant action
                             by starting a new connection with different request
                             """
+                            minCost = dotsi.fy(min(queries, key=lambda x: x["cost"]))
+                            host, port = minCost.address
+                            if requires[action_num]:
+                                """If file needs to be sent for current action"""
+                                if message.jsonheader.content_type == "text/json":
+                                    """if its a query response coming back, start file transfer for action"""
 
-                            minCost = min(queries[action_n], key=lambda x: x["cost"])
-                            print(f"{colorama.Fore.RED}Start connection to {minCost}")
-                            host, port = minCost["address"]
+                                    file = requires[action_num].pop(0)
+                                    logger.info(
+                                        f"Starting action: {action_num} with lowest cost of {minCost.cost} to address {minCost.address}"
+                                    )
+                                    monitor_socket = send_file(
+                                        filename=file,
+                                        address=(host, port),
+                                        sel=sel,
+                                        socket=None,
+                                    )
+                                    # began the action, mark back false
+                                    ready_to_begin[action_num] = False
+                                    # keep track of which action to whick socket
+                                    alive_connections[action_num] = monitor_socket
+                                elif (
+                                    alive_connections[action_num] > 0
+                                    and message.jsonheader.content_type == "binary"
+                                ):
+                                    """
+                                    if its a binary response, from an existing connection, previous file was sent succesfully
+                                    send next file, update the message
+                                    """
+                                    file = requires[action_num].pop(0)
+                                    reuse_connection(message, filename=file)
+                            else:
+                                """no files to send or all files have beeen sent so send the command now"""
+                                if message.jsonheader.content_type == "binary":
+                                    """returning connection from sending a file"""
+                                    new_action = check_remote(actions[action_num])
 
-                            # create buffer to store socket no to be returned
-                            fd = []
+                                    reuse_connection(
+                                        message,
+                                        command=new_action,
+                                        keep_connection_alive=False,
+                                    )
 
-                            for file in requires[action_n]:
-                                # if there are files required to be sent for the action, send them
-                                print(
-                                    f"{colorama.Fore.BLUE}Sending file: {file} to {host} {port}"
-                                )
+                                    # reset the buffers
+                                    ready_to_begin[action_num] = False
+                                    alive_connections[action_num] = -1
+                                elif message.jsonheader.content_type == "text/json":
+                                    """else no files to send, first request so just send the command, returning message is from a query"""
+                                    new_action = check_remote(actions[action_num])
 
-                                # TODO: Send multiple files!
-                                sock = send_file(host, port, file, action_n)
-                                fd.append(sock)
+                                    command_request = create_request(
+                                        "command",
+                                        command=new_action,
+                                        keep_connection_alive=False,
+                                    )
 
-                            queues[action_n].extend(fd)
-                            # if no files or all the files have been sent
-                            # TODO: keep track of when files have been sucessfully received
+                                    start_connection(sel, host, port, command_request)
+                                    ready_to_begin[action_num] = False
+                except ConnectionRefusedError as e:
+                    logger.debug(f"{socket_no}")
+                    logger.debug(f"{queue}")
+                    logger.error(f"{e} to {message.addr} on {socket_no}")
 
-                    if message.response and (
-                        message.jsonheader["content-type"] == "binary"
-                    ):
-                        # the queue will currently hold all the connections which a file has been sent and awaiting a reply
-                        # which action is the returning socket for?
-                        action_n = in_list(socket_no, queues)
-
-                        if action_n != -1:
-                            # If there is a socket being awaited on, remove it from queue
-                            queues[action_n].remove(socket_no)
-
-                        if not queues[action_n]:
-                            # temporary loop to see again if queue is empty,if so run the action
-                            # TODO: refactor this
-                            actions[1:][action_n]
-
-                            print(f"{colorama.Fore.GREEN}FINALLY RUN ACTUAL ACTION")
-
-                            # mock assume that file sucessfully sent
-                            actions[1:][action_n]
-
-                            request = create_request(
-                                "command",
-                                shell="cc",
-                                args=["-o", "output"],
-                                files=requires[action_n],
-                                action=action_n,
-                            )
-
-                            # start_connection(host, port, request)
-                            # TODO: receive the output file and do something with it here
-
+                    queue.remove(socket_no)
+                    message.close()
+                except SubprocessFailedError as e:
+                    logger.critical(
+                        f"Subprocess failed: {e} on request:{message.request.content.command} for action: {action_num}"
+                    )
+                    logger.critical(f"Stopping client")
+                    exit(1)
                 except Exception:
-                    print(
+                    logger.error(
                         f"Main: Error: Exception for {message.addr}:\n"
                         f"{traceback.format_exc()}"
                     )
@@ -240,45 +240,31 @@ def event_loop(addresses):
             if not sel.get_map():
                 break
     except KeyboardInterrupt:
-        print("Caught keyboard interrupt, exiting")
-    # finally:
-    #     sel.close()
+        logger.error("Caught keyboard interrupt, exiting")
+    finally:
+        sel.close()
 
 
-def send_file(host, port, filename, action):
-    """
-    Send a file on a host
-
-        Parameters:
-            host (str): host ip address
-            port (int): port number
-            filename (str): file to send
-
-        Returns:
-            int : socket fd
-    """
-    with open(filename, "rb") as f:
-        data = f.read()
-
-    request = create_request(request="file", args=data, action=action)
-    # return 1
-
-    return start_connection(host, port, request)
+def check_remote(action):
+    if "remote" in action[0]:
+        action[0] = action[0].split("-")[1]
+    return action
 
 
 def main():
-    # parser(filename)
 
-    # mock return of parser
-    host = "127.0.0.1"
-    port = 65432
+    addresses, action_sets = parse_file(sys.argv[1])
 
-    port2 = 65431
+    for index, action_set in enumerate(action_sets):
+        logger.info(f"Starting actionset: {index}")
+        actions = action_set[1:]
+        try:
+            event_loop(addresses, actions)
+            logger.info(f"Actionset {index} completed successfully")
+        except RuntimeError as e:
+            logger.exception(e)
 
-    addresses = [(host, port), (host, port2), (host, port)]
-
-    event_loop(addresses)
-    sel.close()
+    logger.info("All actionsets completed successfully!")
 
 
 if __name__ == "__main__":

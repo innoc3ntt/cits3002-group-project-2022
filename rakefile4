@@ -1,0 +1,8 @@
+HOSTS = 127.0.0.1
+PORT = 8000
+
+actionset1: 
+    remote-cc -o output1 test.c test2.c
+        requires test.c test2.c
+    remote-cc -o output2 test3.c
+        requires test3.c

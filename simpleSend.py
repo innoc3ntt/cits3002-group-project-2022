@@ -1,16 +1,16 @@
-import sys
 import socket
 import selectors
 import traceback
-import os
-import colorama
+import dotsi
 
 import libclient
 
 sel = selectors.DefaultSelector()
 
 
-def create_request(request, action=None, args=None, shell="echo", files=None):
+def create_request(
+    request, action=None, args=None, shell=None, files=None, data=None, filename=None
+):
     """
     Create a request to pass to start_connection
     One of three types
@@ -29,21 +29,27 @@ def create_request(request, action=None, args=None, shell="echo", files=None):
         (dict) A dictionary representing the request object
     """
     if request == "query":
-        return dict(
+        return dotsi.Dict(
             type="text/json",
             encoding="utf-8",
             content=dict(request=request),
             action=action,
         )
     elif request == "command":
-        return dict(
+        return dotsi.Dict(
             type="command",
             encoding="utf-8",
             content=dict(request=request, shell=shell, args=args, files=files),
             action=action,
         )
     elif request == "file":
-        return dict(type="binary", encoding="binary", content=args, action=action)
+        return dotsi.Dict(
+            type="binary",
+            encoding="binary",
+            content=data,
+            action=action,
+            filename=filename,
+        )
 
 
 def start_connection(host, port, request):
@@ -59,22 +65,36 @@ def start_connection(host, port, request):
     return sock.fileno()
 
 
+def get_file_data(filename):
+    with open(filename, "rb") as f:
+        data = f.read()
+
+    return data
+
+
+def send_file(filename, address, sel, socket=None):
+    host, port = address
+    data = get_file_data(filename)
+    request = create_request("file", data=data, filename=filename)
+
+    if socket is None:
+        start_connection(host, port, request)
+    else:
+        message = libclient.Message(sel, socket, address, request)
+        sel.modify(socket, events=selectors.EVENT_WRITE, data=message)
+
+
 def main():
     host = "127.0.0.1"
     port = 65432
 
-    filename = "test.c"
-
-    with open(filename, "rb") as f:
-        data = f.read()
-
     # request = create_request(
     #     "command", shell="cc", value=["-o", "output"], files=filename
     # )
+    files_to_send = ["test.c", "test2.c"]
 
-    request = create_request("file", args=data, action="5")
-
-    start_connection(host, port, request)
+    # start the action by sending requires
+    send_file(filename="test.c", address=(host, port), sel=sel, socket=None)
 
     try:
         while True:
@@ -83,6 +103,23 @@ def main():
                 message = key.data
                 try:
                     message.process_events(mask)
+
+                    if (
+                        message.response
+                        and message.jsonheader["content_type"] == "binary"
+                    ):
+                        # if receive a binary response from server
+                        if files_to_send:
+                            # if there are still files to be sent
+                            send_file(
+                                filename="test2.c",
+                                socket=key.fileobj,
+                                address=message.addr,
+                                sel=sel,
+                            )
+                            files_to_send.pop(0)
+                        else:
+                            message.close()
                 except Exception:
                     print(
                         f"Main: Error: Exception for {message.addr}:\n"
