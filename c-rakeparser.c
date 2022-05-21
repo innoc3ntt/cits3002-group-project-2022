@@ -13,6 +13,32 @@ extern  void    free_words(char **words);
 #define     DICTIONARY  "/Users/hamishgillespie/Desktop/netWORKS/project/cits3002-group-project-2022/rakefile1"
 #define     MAX_HOSTNAME_LEN    20
 
+typedef struct {
+  char **command;
+  char **requirements; // string of the requirements
+  bool requires;    //does this string have requirements? 
+  int nwords_command; //number of words in command
+  int nwords_requirement; //number of words in requirements
+} *action;
+
+typedef action ActionSet;
+
+action creatAction(char* mystring){
+    int nwords;
+    action a = malloc(sizeof(action)+sizeof(mystring)*3); 
+    a->command = strsplit(mystring, &nwords);
+    a->nwords_command = nwords;
+    a->requires = "false"; //no requirements for this command so far
+    return a;
+}
+
+void addRequirement(action theAction, char *mystring){
+    int nwords;
+    char *addRequirement = mystring;
+    theAction->requirements = strsplit(addRequirement, &nwords);
+    theAction->nwords_requirement = nwords;
+    theAction->requires = true;
+}
 
 int PORT;
 int NUM_HOSTS;
@@ -24,11 +50,8 @@ int main(int argc, char const *argv[])
     int act_set_count = 0; // the the number of actions sets
     char* HOSTS[MAX_HOSTNAME_LEN];
 
-    char* ACTIONS[100];
-    printf("%p\n", (void*) ACTIONS);
-
     //Initiating buffer and FILE
-    char   line[BUFSIZ];
+    char   line[BUFSIZE];
     FILE   *dict = fopen(DICTIONARY, "r");
 
     //Attempting to open the file
@@ -83,7 +106,8 @@ int main(int argc, char const *argv[])
     printf("\nEnd of first opening of rakeFile------------\n");
 
 
-    //procesing each actionset of file--------------------------
+    //procesing each actionset of file to get number of actions--------------------------
+    printf("starting second read of file\n");
     dict = fopen(DICTIONARY, "r");
 
     if(dict == NULL) {
@@ -117,9 +141,24 @@ int main(int argc, char const *argv[])
         }
     } 
     fclose(dict);
-    //Fillinf in the ActionSet Array------------------------
+    //Fillinf in the ACTIONS Array------------------------
+    //ACTIONS is an Array of action_set's, an action set contains different actions
+    printf("starting third read of file\n");
+
+    //this holds this is where actionsets are stored
+    ActionSet *ACTIONS[act_set_count];
+    //allocating memory to all the actionsets
+    for(int i = 0; i < act_set_count; i++){
+            ACTIONS[i] = malloc(sizeof(ActionSet)*3);
+    }
+
 
     dict = fopen(DICTIONARY, "r");
+
+    //using cur_act_set again
+    cur_act_set = -1;
+    //tracking the current action in an action set
+    int current_action_in_set = 0;
 
     //Attempting to open the file
     if(dict == NULL) {
@@ -128,17 +167,29 @@ int main(int argc, char const *argv[])
     }
 
     while( fgets(line, sizeof line, dict) != NULL ) {
-        //actions contain one tab but not two tabs
+        // if line is a comment skip it
+        if(strstr(line,"#")) continue;
+
+        //entering a new actions set 
+        if( strstr(line,"actionset") && !strstr(line,"    ") ){
+            //increment the current action set
+            printf("swag %s", line);
+            cur_act_set++;
+            //creat the actionSet
+            //set current action count for this action set back to -1
+            current_action_in_set = -1;
+        }
+
+        //the line is an action, belonging to an action set
         if( strstr(line,"    ") && !strstr(line,"        ") ){
-            int nwords;
-            char **words = strsplit(line, &nwords);
-            for(int w=0 ; w<nwords ; ++w) {
-                printf("\t[%i]  \"%s\"\n", w, words[w]);
-            }
-            // for(int i =0; i < nwords -2 ; ++i){
-            //     ACTIONS[i] = words[i+2];
-            // }
-            // NUM_HOSTS = nwords - 2;
+            printf("\t swag %s",line);
+            current_action_in_set++;
+            ACTIONS[cur_act_set][current_action_in_set] = creatAction(line);
+        }
+
+        //if the line is requirements
+        if(strstr(line, "requires")){
+            addRequirement(ACTIONS[cur_act_set][current_action_in_set], line);
         }
 
         
@@ -158,6 +209,26 @@ int main(int argc, char const *argv[])
     //iterating through action_counts;
     for(int i = 0; i < act_set_count; i++){
         printf("actionset: %i has %i actions\n", i ,action_counts[i]);
+    }
+    printf("\n");
+    //TRYING TO LOOP THROUGH ACTIONS, final stage
+    for(int i = 0; i < act_set_count; i++){
+        ActionSet *c = ACTIONS[i];
+
+        for(int z = 0; z<action_counts[i];z++){
+            action b =  c[z];
+            printf("\t");
+            for(int w = 0; w<b->nwords_command; w++){
+                printf("%s ", b->command[w]);
+            }
+            if(b->requires == true){
+                for(int w = 0; w< b->nwords_requirement; w++){
+                    printf("%s ", b->requirements[w]);
+                }
+            }
+
+        }
+        // printf("\n");
     }
     return 0;
 }

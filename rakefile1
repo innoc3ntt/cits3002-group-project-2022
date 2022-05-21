@@ -8,14 +8,7 @@ actionset0:
     echo about to compile stuff
     cc -o compile swag.c
         requires swag.h
-
+        
 actionset1:
-    echo starting actionset1
-
-actionset2:
     echo starting actionset2
-        requires swag.h
     echo another action
-
-actionset3:
-    echo more action sets
