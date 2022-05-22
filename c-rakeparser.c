@@ -28,7 +28,7 @@ action creatAction(char* mystring){
     action a = malloc(sizeof(action)+sizeof(mystring)*3); 
     a->command = strsplit(mystring, &nwords);
     a->nwords_command = nwords;
-    a->requires = "false"; //no requirements for this command so far
+    a->requires = false; //no requirements for this command so far
     return a;
 }
 
@@ -182,13 +182,12 @@ int main(int argc, char const *argv[])
 
         //the line is an action, belonging to an action set
         if( strstr(line,"    ") && !strstr(line,"        ") ){
-            printf("\t swag %s",line);
             current_action_in_set++;
             ACTIONS[cur_act_set][current_action_in_set] = creatAction(line);
         }
 
         //if the line is requirements
-        if(strstr(line, "requires")){
+        if(strstr(line, "requires") && strstr(line,"        ")){
             addRequirement(ACTIONS[cur_act_set][current_action_in_set], line);
         }
 
@@ -222,13 +221,13 @@ int main(int argc, char const *argv[])
                 printf("%s ", b->command[w]);
             }
             if(b->requires == true){
-                for(int w = 0; w< b->nwords_requirement; w++){
+                for(int w = 0; w < b->nwords_requirement; w++){
                     printf("%s ", b->requirements[w]);
                 }
             }
 
         }
-        // printf("\n");
+        printf("\n");
     }
     return 0;
 }
