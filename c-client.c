@@ -9,9 +9,11 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+
 #include <time.h>
 
 #include <arpa/inet.h>
+#include <curl/curl.h>
 
 #define PORT "8000" // the port client will be connecting to 
 
@@ -85,7 +87,7 @@ int main(int argc, char *argv[])
 
 	// int myarray[] = {1,2,3,4};
 	// int* message = myarray;
-	char message[]= "1234569";
+	char message[]= "hello";
     printf("%lu bytes to be sent\n", sizeof(message));
 
     int bytes_sent = send(sockfd , message , sizeof(message) , 0);
