@@ -78,7 +78,6 @@ class Message(MessageAll):
         request = self.request.request
 
         if request == "query":
-            time.sleep(random.randint(0, 5))
             content = {"cost": random.randint(0, 100)}
             logger.info(f">>> Responding to query with: {content}")
         else:

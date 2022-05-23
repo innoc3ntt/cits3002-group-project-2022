@@ -107,7 +107,7 @@ def event_loop(addresses, actions):
             events = sel.select(timeout=1)
 
             for key, mask in events:
-                time.sleep(1)
+                # time.sleep(1)
                 message = key.data
                 try:
                     socket_no = key.fd
@@ -124,6 +124,9 @@ def event_loop(addresses, actions):
                                     "cost": message.response["cost"],
                                 }
                             )
+
+                            logger.debug(f"queries: {queries}")
+                            logger.debug(f"queue: {queue}")
                             if not queue:
                                 # if after dequeing, all queries have returned, ready to send action and query for next action
                                 ready_to_begin[action_number_sent] = True
@@ -132,6 +135,7 @@ def event_loop(addresses, actions):
                                     # while there are actions
                                     _remote_start(next(my_iter), action_number_sent)
                                 except StopIteration:
+                                    # no more actions to perform
                                     pass
 
                         """For returned connections"""
@@ -157,15 +161,19 @@ def event_loop(addresses, actions):
                             if an existing connection or ready to start a new connection
 
                             determine the lowest bid for the action and send the relevant action
-                            by starting a new connection with different request
+                            by starting a new connection with a file transfer or command request
                             """
-                            minCost = dotsi.fy(min(queries, key=lambda x: x["cost"]))
-                            host, port = minCost.address
+
                             if requires[action_num]:
                                 """If file needs to be sent for current action"""
                                 if message.jsonheader.content_type == "text/json":
                                     """if its a query response coming back, start file transfer for action"""
-
+                                    minCost = dotsi.fy(
+                                        min(queries, key=lambda x: x["cost"])
+                                    )
+                                    host, port = minCost.address
+                                    logger.debug(queries)
+                                    # logger.debug(queue)
                                     file = requires[action_num].pop(0)
                                     logger.info(
                                         f"Starting action: {action_num} with lowest cost of {minCost.cost} to address {minCost.address}"
@@ -180,6 +188,7 @@ def event_loop(addresses, actions):
                                     ready_to_begin[action_num] = False
                                     # keep track of which action to whick socket
                                     alive_connections[action_num] = monitor_socket
+                                    queries = []
                                 elif (
                                     alive_connections[action_num] > 0
                                     and message.jsonheader.content_type == "binary"
@@ -207,6 +216,10 @@ def event_loop(addresses, actions):
                                     alive_connections[action_num] = -1
                                 elif message.jsonheader.content_type == "text/json":
                                     """else no files to send, first request so just send the command, returning message is from a query"""
+                                    minCost = dotsi.fy(
+                                        min(queries, key=lambda x: x["cost"])
+                                    )
+                                    host, port = minCost.address
                                     new_action = check_remote(actions[action_num])
 
                                     command_request = create_request(
@@ -217,6 +230,7 @@ def event_loop(addresses, actions):
 
                                     start_connection(sel, host, port, command_request)
                                     ready_to_begin[action_num] = False
+                                    queries = []
                 except ConnectionRefusedError as e:
                     logger.debug(f"{socket_no}")
                     logger.debug(f"{queue}")
@@ -263,6 +277,8 @@ def main():
             logger.info(f"Actionset {index} completed successfully")
         except RuntimeError as e:
             logger.exception(e)
+        except KeyboardInterrupt:
+            raise RuntimeError("Keyboard interrupt")
 
     logger.info("All actionsets completed successfully!")
 
