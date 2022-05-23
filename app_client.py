@@ -1,4 +1,4 @@
-import logging, traceback, selectors, yaml, logging.config, time, sys, os
+import logging, traceback, selectors, yaml, logging.config, sys, os
 
 
 from parser import parse_file
@@ -112,7 +112,10 @@ def event_loop(addresses, actions):
                     message.process_events(mask)
 
                     if message.response:
-                        if message.jsonheader.content_type == "text/json":
+                        if (
+                            message.jsonheader.content_type == "text/json"
+                            and message.request["content"]["request"] == "query"
+                        ):
                             # Process the server response to query request, if there is a response and type is query
                             # If there is a socket being awaited on, remove it from queue and store result
                             queue.remove(socket_no)
@@ -136,13 +139,13 @@ def event_loop(addresses, actions):
                                     # no more actions to perform
                                     pass
 
-                        """For returned connections"""
+                        """For returned connections, second stage"""
                         if socket_no in alive_connections:
                             """If it is for an existing connection, check which action it is for"""
                             action_num = alive_connections.index(socket_no)
 
                         elif ready_to_begin.count(True) > 0:
-                            """Ready to begin a new action set"""
+                            """Ready to begin a new action set. find which action it is"""
                             action_num = ready_to_begin.index(True)
 
                         else:
@@ -150,7 +153,7 @@ def event_loop(addresses, actions):
                             Is not one of the above options,
                             - not an existing connection
                             - not a new action
-                            unrecognized
+                            unrecognized so mark as -1 to ignore
                             """
                             action_num = -1
 
@@ -217,7 +220,6 @@ def event_loop(addresses, actions):
                                     address = minCost["address"]
                                     cost = minCost["cost"]
                                     host, port = address
-                                    file = requires[action_num].pop(0)
                                     logger.info(
                                         f"Starting action: {action_num} with lowest cost of {cost} to address {address}"
                                     )
@@ -230,6 +232,7 @@ def event_loop(addresses, actions):
                                     )
 
                                     start_connection(sel, host, port, command_request)
+                                    # reset buffers
                                     ready_to_begin[action_num] = False
                                     queries = []
                 except ConnectionRefusedError as e:
@@ -292,8 +295,9 @@ def main():
             except RuntimeError as e:
                 logger.exception(e)
             except KeyboardInterrupt:
+                break
 
-                logger.info("All actionsets completed successfully!")
+        logger.info("All actionsets completed successfully!")
     except Exception as e:
         pass
 
