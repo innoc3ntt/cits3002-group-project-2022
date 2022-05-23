@@ -12,13 +12,19 @@
 
 #include <time.h>
 
+#include <fcntl.h>
+
 #include <arpa/inet.h>
-#include <curl/curl.h>
+// #include <curl/curl.h>
 
 #define PORT "8000" // the port client will be connecting to 
 
 #define MAXDATASIZE 100 // max number of bytes we can get at once 
 
+#define SIZE 1024
+
+#define BUFSIZE 1000;
+#define DICTIONARY "/Users/hamishgillespie/Desktop/netWORKS/project/cits3002-group-project-2022/rakefile1"
 
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
@@ -29,6 +35,7 @@ void *get_in_addr(struct sockaddr *sa)
 
 	return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
+
 
 int main(int argc, char *argv[])
 {
@@ -84,20 +91,38 @@ int main(int argc, char *argv[])
     // int success = getpeername(int sockfd, struct sockaddr *addr, int *addrlen); 
 
 
+	int a = BUFSIZE;
+	char line[a];
+    FILE   *dict = fopen(DICTIONARY, "r");
 
-	// int myarray[] = {1,2,3,4};
-	// int* message = myarray;
-	char message[]= "hello";
-    printf("%lu bytes to be sent\n", sizeof(message));
-
-    int bytes_sent = send(sockfd , message , sizeof(message) , 0);
-
+	if(dict == NULL) {
+        printf( "cannot open dictionary '%s'\n", DICTIONARY);
+        exit(EXIT_FAILURE);
+    }
+	while( fgets(line, sizeof line, dict) != NULL ) {
+		int bytes_sent = send(sockfd , line , sizeof(line) , 0);
 	if(bytes_sent  <= 0){
 		puts("Send failed");
 		return 1;
 	}
-	printf("Data Sent\n");
-    printf("%i bytes have been sent\n", bytes_sent);
+
+
+	}
+	fclose(dict);
+
+	// int myarray[] = {1,2,3,4};
+	// int* message = myarray;
+	// char message[]= "hello";
+    // printf("%lu bytes to be sent\n", sizeof(message));
+
+    // int bytes_sent = send(sockfd , message , sizeof(message) , 0);
+
+	// if(bytes_sent  <= 0){
+	// 	puts("Send failed");
+	// 	return 1;
+	// }
+	// printf("Data Sent\n");
+    // printf("%i bytes have been sent\n", bytes_sent);
 
 	if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
 		perror("recv");

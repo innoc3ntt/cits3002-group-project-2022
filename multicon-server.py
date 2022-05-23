@@ -12,6 +12,9 @@ import os
 sel = selectors.DefaultSelector()
 random.seed(time.time())
 
+filepath = "/Users/hamishgillespie/Desktop/testingoutput/myfile.txt"
+
+f = open(filepath, 'w')
 
 
 def accept_wrapper(sock):
@@ -38,6 +41,7 @@ def service_connection(key, mask):
         if data.outb:
             time.sleep(random.randint(0, 5))
             print(f"Echoing {data.outb!r} to {data.addr}")
+            f.write(f"{data.outb!r}")
             sent = sock.send(data.outb)  # Should be ready to write
             data.outb = data.outb[sent:]
 
