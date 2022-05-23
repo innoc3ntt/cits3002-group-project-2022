@@ -83,11 +83,9 @@ int main(int argc, char *argv[])
 
 
 
-    //trying to send a message--------
-    //Send some data
-	// int message[3][2] = {{1,2},{3,4},{5,6}};
-	int myarray[] = {1,2,3,4};
-	int* message = myarray;
+	// int myarray[] = {1,2,3,4};
+	// int* message = myarray;
+	char message[]= "1234569";
     printf("%lu bytes to be sent\n", sizeof(message));
 
     int bytes_sent = send(sockfd , message , sizeof(message) , 0);
@@ -104,7 +102,6 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	buf[numbytes] = '\0';
 	
 	printf("client: received '%s'\n",buf);
 

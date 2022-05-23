@@ -1,0 +1,38 @@
+version: 1
+
+formatters:
+  simple:
+    format: "%(name)s - %(lineno)d -  %(message)s"
+
+  complex:
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    datefmt: "%H:%M:%S"
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: DEBUG
+    formatter: complex
+
+  client:
+    class: logging.FileHandler
+    level: DEBUG
+    formatter: complex
+    filename: logs/client.log
+
+  server:
+     class: logging.FileHandler
+     level: DEBUG
+     formatter: complex
+     filename: logs/server.log
+
+loggers:
+  client:
+    level: DEBUG
+    handlers: [console, client]
+    propagate: yes
+
+  server:
+    level: DEBUG
+    handlers: [console, server]
+    propagate: yes
