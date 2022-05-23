@@ -1,7 +1,5 @@
 import logging, traceback, selectors, yaml, logging.config, time, sys, os
 
-import dotsi
-
 
 from parser import parse_file
 from libclient import (
@@ -168,15 +166,14 @@ def event_loop(addresses, actions):
                                 """If file needs to be sent for current action"""
                                 if message.jsonheader.content_type == "text/json":
                                     """if its a query response coming back, start file transfer for action"""
-                                    minCost = dotsi.fy(
-                                        min(queries, key=lambda x: x["cost"])
-                                    )
-                                    host, port = minCost.address
-                                    logger.debug(queries)
-                                    # logger.debug(queue)
+
+                                    minCost = min(queries, key=lambda x: x["cost"])
+                                    address = minCost["address"]
+                                    cost = minCost["cost"]
+                                    host, port = address
                                     file = requires[action_num].pop(0)
                                     logger.info(
-                                        f"Starting action: {action_num} with lowest cost of {minCost.cost} to address {minCost.address}"
+                                        f"Starting action: {action_num} with lowest cost of {cost} to address {address}"
                                     )
                                     monitor_socket = send_file(
                                         filename=file,
@@ -216,10 +213,14 @@ def event_loop(addresses, actions):
                                     alive_connections[action_num] = -1
                                 elif message.jsonheader.content_type == "text/json":
                                     """else no files to send, first request so just send the command, returning message is from a query"""
-                                    minCost = dotsi.fy(
-                                        min(queries, key=lambda x: x["cost"])
+                                    minCost = min(queries, key=lambda x: x["cost"])
+                                    address = minCost["address"]
+                                    cost = minCost["cost"]
+                                    host, port = address
+                                    file = requires[action_num].pop(0)
+                                    logger.info(
+                                        f"Starting action: {action_num} with lowest cost of {cost} to address {address}"
                                     )
-                                    host, port = minCost.address
                                     new_action = check_remote(actions[action_num])
 
                                     command_request = create_request(
@@ -260,27 +261,41 @@ def event_loop(addresses, actions):
 
 
 def check_remote(action):
+    """Check if an action is remote by parsing the first argument
+
+    Args:
+        action list(str): a list of the words of the actions
+
+    Returns:
+        list(str): the action with remote split if it is present
+    """
     if "remote" in action[0]:
         action[0] = action[0].split("-")[1]
     return action
 
 
 def main():
+    """
+    Parse a rakefile and then run an event loop for each action set
 
+    Raises:
+        RuntimeError: _description_
+    """
     addresses, action_sets = parse_file(sys.argv[1])
+    try:
+        for index, action_set in enumerate(action_sets):
+            logger.info(f"Starting actionset: {index}")
+            actions = action_set[1:]
+            try:
+                event_loop(addresses, actions)
+                logger.info(f"Actionset {index} completed successfully")
+            except RuntimeError as e:
+                logger.exception(e)
+            except KeyboardInterrupt:
 
-    for index, action_set in enumerate(action_sets):
-        logger.info(f"Starting actionset: {index}")
-        actions = action_set[1:]
-        try:
-            event_loop(addresses, actions)
-            logger.info(f"Actionset {index} completed successfully")
-        except RuntimeError as e:
-            logger.exception(e)
-        except KeyboardInterrupt:
-            raise RuntimeError("Keyboard interrupt")
-
-    logger.info("All actionsets completed successfully!")
+                logger.info("All actionsets completed successfully!")
+    except Exception as e:
+        pass
 
 
 if __name__ == "__main__":
