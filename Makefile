@@ -7,12 +7,11 @@ CFLAGS          = -std=c99 -O -Wall -Werror -pedantic
 
 OBJ		= strsplit.o
 
-tester:	c-rakeparser.c $(OBJ)
+c-rakeparser:	c-rakeparser.c $(OBJ)
 	$(CC) $(CFLAGS) -o c-rakeparser c-rakeparser.c $(OBJ)
 
-%.o:	%.c
-	$(CC) $(CFLAGS) -c $<
-
+$(OBJ).o:	%.c
+	$(CC) $(CFLAGS) -c strsplit.c
 
 clean:
-	@rm -f tester $(OBJ)
+	@rm -f c-rakeparser $(OBJ)

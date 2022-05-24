@@ -1,21 +1,15 @@
+import io
+import json
 import sys
 import socket
 import selectors
 import types
-import time
-import random
-import os
+import struct
 
-
-#  On this branch this file is being used to test early stages of c-client
+HOST = "localhost"
+PORT = 8000
 
 sel = selectors.DefaultSelector()
-random.seed(time.time())
-
-filepath = "/Users/hamishgillespie/Desktop/testingoutput/myfile.txt"
-
-f = open(filepath, 'w')
-
 
 def accept_wrapper(sock):
     conn, addr = sock.accept()  # Should be ready to read
@@ -26,13 +20,34 @@ def accept_wrapper(sock):
     sel.register(conn, events, data=data)
 
 
+def _json_decode(json_bytes, encoding):
+    tiow = io.TextIOWrapper(io.BytesIO(json_bytes), encoding=encoding, newline="")
+    obj = json.load(tiow)
+    tiow.close()
+    return obj
+
 def service_connection(key, mask):
     sock = key.fileobj
     data = key.data
     if mask & selectors.EVENT_READ:
         recv_data = sock.recv(1024)  # Should be ready to read
+
         if recv_data:
-            print(f"{recv_data}\n")
+            proto = recv_data[:2]
+            proto = struct.unpack(">H", proto)[0]
+            print(f'len: {len(recv_data)}, recv_data: {recv_data}')
+            recv_data = recv_data[2:]
+            try:
+
+                print(f"proto: {proto}")
+
+                print(f"proto-unpacked: {proto}")
+                json_msg = _json_decode(recv_data,"utf-8")
+                print(f"received: {json_msg}")
+                print(f"unpack {struct.unpack('<H',recv_data)[0]}")
+
+            except Exception as e:
+                print(e)
             data.outb += recv_data
         else:
             print(f"Closing connection to {data.addr}")
@@ -40,20 +55,16 @@ def service_connection(key, mask):
             sock.close()
     if mask & selectors.EVENT_WRITE:
         if data.outb:
-            time.sleep(random.randint(0, 5))
             print(f"Echoing {data.outb!r} to {data.addr}")
-            f.write(f"{data.outb!r}")
             sent = sock.send(data.outb)  # Should be ready to write
             data.outb = data.outb[sent:]
 
-host, port = ("127.0.0.1", 8000)
 
 lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-# Avoid bind() exception: OSError: [Errno 48] Address already in use
 lsock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-lsock.bind((host, port))
+lsock.bind((HOST, PORT))
 lsock.listen()
-print(f"Listening on {(host, port)}")
+print(f"Listening on {(HOST, PORT)}")
 lsock.setblocking(False)
 sel.register(lsock, selectors.EVENT_READ, data=None)
 

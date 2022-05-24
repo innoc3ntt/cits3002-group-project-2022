@@ -21,10 +21,10 @@
 
 #define MAXDATASIZE 100 // max number of bytes we can get at once 
 
-#define SIZE 1024
+#define SIZE 1000
 
 #define BUFSIZE 1000;
-#define DICTIONARY "/Users/hamishgillespie/Desktop/netWORKS/project/cits3002-group-project-2022/rakefile1"
+#define DICTIONARY "/Users/hamishgillespie/Desktop/netWORKS/project/cits3002-group-project-2022/simple.txt"
 
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
@@ -35,6 +35,20 @@ void *get_in_addr(struct sockaddr *sa)
 
 	return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
+
+void send_file(FILE *fp, int sockfd){
+//   int n;
+  char data[SIZE] = {0};
+ 
+  while(fgets(data, SIZE, fp) != NULL) {
+    if (send(sockfd, data, sizeof(data), 0) == -1) {
+      perror("[-]Error in sending file.");
+      exit(1);
+    }
+    bzero(data, SIZE);
+  }
+}
+
 
 
 int main(int argc, char *argv[])
@@ -87,31 +101,20 @@ int main(int argc, char *argv[])
 
 	freeaddrinfo(servinfo); // all done with this structure
 
-    //-----geting info about socket
-    // int success = getpeername(int sockfd, struct sockaddr *addr, int *addrlen); 
 
-
-	int a = BUFSIZE;
-	char line[a];
+	//------------------------------sending a file over the socket
     FILE   *dict = fopen(DICTIONARY, "r");
 
 	if(dict == NULL) {
         printf( "cannot open dictionary '%s'\n", DICTIONARY);
         exit(EXIT_FAILURE);
     }
-	while( fgets(line, sizeof line, dict) != NULL ) {
-		int bytes_sent = send(sockfd , line , sizeof(line) , 0);
-	if(bytes_sent  <= 0){
-		puts("Send failed");
-		return 1;
-	}
 
-
-	}
+	send_file(dict, sockfd);	
 	fclose(dict);
 
-	// int myarray[] = {1,2,3,4};
-	// int* message = myarray;
+
+	//-------------------------------sending a string over the socket
 	// char message[]= "hello";
     // printf("%lu bytes to be sent\n", sizeof(message));
 
