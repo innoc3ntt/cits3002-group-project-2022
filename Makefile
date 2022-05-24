@@ -26,4 +26,4 @@ globals.o : globals.c c-client.h
 	$(CC) $(CFLAGS) -c globals.c
 
 clean:
-	@rm -f c-parsing $(OBJ)
+	@rm globals.o c-parsing.o strsplit.o c-clientV2.o c-clientV2
