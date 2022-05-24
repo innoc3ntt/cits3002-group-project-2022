@@ -7,11 +7,23 @@ CFLAGS          = -std=c99 -O -Wall -Werror -pedantic
 
 OBJ		= strsplit.o
 
-c-rakeparser:	c-rakeparser.c $(OBJ)
-	$(CC) $(CFLAGS) -o c-rakeparser c-rakeparser.c $(OBJ)
+# c-rakeparser:	c-rakeparser.c strsplit.o
+# 	$(CC) $(CFLAGS) -o c-rakeparser c-rakeparser.c $(OBJ)
 
-$(OBJ).o:	%.c
+c-clientV2 : c-clientV2.o c-parsing.o globals.o strsplit.o
+	$(CC) $(CFLAGS) -o c-clientV2 \c-clientV2.o c-parsing.o globals.o strsplit.o
+
+c-clientV2.o : c-clientV2.c c-client.h
+	$(CC) $(CFLAGS) -c c-clientV2.c
+
+strsplit.o :	strsplit.c
 	$(CC) $(CFLAGS) -c strsplit.c
 
+c-parsing.o : c-parsing.c c-client.h strsplit.o
+	$(CC) $(CFLAGS) -c c-parsing.c
+
+globals.o : globals.c c-client.h
+	$(CC) $(CFLAGS) -c globals.c
+
 clean:
-	@rm -f c-rakeparser $(OBJ)
+	@rm -f c-parsing $(OBJ)
