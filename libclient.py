@@ -195,7 +195,7 @@ class Message(MessageAll):
                 f.write(self.response)
         else:
             logger.error(f">>> Subprocess exited non-zero")
-            raise SubprocessFailedError(f"{self.jsonheader.output}")
+            raise SubprocessFailedError(f"{self.jsonheader['output']}")
 
     def read(self):
         self._read()

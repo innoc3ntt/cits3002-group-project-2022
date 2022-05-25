@@ -67,7 +67,7 @@ def parse_file(filename):
                 else:
                     split = option.split(":")
                     addresses.append((split[0], int(split[1])))
-    return addresses, actions
+    return addresses, actions, port
 
 
 def main():

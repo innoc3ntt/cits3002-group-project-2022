@@ -11,8 +11,6 @@ from libclient import (
     send_file,
 )
 
-LOCAL_PORT = 8000
-
 logging.basicConfig(filename="logs/clients.log", filemode="w", level=logging.DEBUG)
 with open("logger.yaml", "rt") as f:
     logging_config = yaml.safe_load(f.read())
@@ -29,15 +27,14 @@ collect the returned costs, send a request to remote host,
 which may involve sending a file for each action and receiving back a file from each host
 """
 
-os.chdir("./fakerakes")
 
-
-def event_loop(addresses, actions):
+def event_loop(addresses, actions, port):
     """
     Run for each action in an actionset to query all the connected servers.
     will return the minimum bid server and it's ip address
     """
     sel = selectors.DefaultSelector()
+    local_port = port
 
     # buffers to hold connection data per action
     queue = []
@@ -45,7 +42,7 @@ def event_loop(addresses, actions):
     requires = [[] for x in actions]
     ready_to_begin = [False for x in actions]
     alive_connections = [-1 for x in actions]
-    action_number_sent = 0
+    query_n = 0
 
     for index, action in enumerate(actions):
         # for each action, get required files in a buffer and send a query to all hosts
@@ -57,7 +54,7 @@ def event_loop(addresses, actions):
             action.pop()
 
     def _query():
-        logger.info(f"Querying cost for action: {action_number_sent}")
+        logger.info(f"Querying cost for action: {query_n}")
         for address in addresses:
             # for each host, query the cost for an action
             host, port = address
@@ -68,7 +65,7 @@ def event_loop(addresses, actions):
         if "remote" in action_step[0]:
             _query()
         else:
-            host, port = "localhost", LOCAL_PORT
+            host, port = "localhost", local_port
             logger.info(f"=== Sending a request to localhost for {action_n} ===")
 
             if requires[action_n]:
@@ -130,11 +127,11 @@ def event_loop(addresses, actions):
                             logger.debug(f"queue: {queue}")
                             if not queue:
                                 # if after dequeing, all queries have returned, ready to send action and query for next action
-                                ready_to_begin[action_number_sent] = True
-                                action_number_sent += 1
+                                ready_to_begin[query_n] = True
+                                query_n += 1
                                 try:
                                     # while there are actions
-                                    _remote_start(next(my_iter), action_number_sent)
+                                    _remote_start(next(my_iter), query_n)
                                 except StopIteration:
                                     # no more actions to perform
                                     pass
@@ -142,11 +139,11 @@ def event_loop(addresses, actions):
                         """For returned connections, second stage"""
                         if socket_no in alive_connections:
                             """If it is for an existing connection, check which action it is for"""
-                            action_num = alive_connections.index(socket_no)
+                            action_n = alive_connections.index(socket_no)
 
                         elif ready_to_begin.count(True) > 0:
                             """Ready to begin a new action set. find which action it is"""
-                            action_num = ready_to_begin.index(True)
+                            action_n = ready_to_begin.index(True)
 
                         else:
                             """
@@ -155,9 +152,9 @@ def event_loop(addresses, actions):
                             - not a new action
                             unrecognized so mark as -1 to ignore
                             """
-                            action_num = -1
+                            action_n = -1
 
-                        if action_num >= 0:
+                        if action_n >= 0:
                             """
                             if an existing connection or ready to start a new connection
 
@@ -165,7 +162,7 @@ def event_loop(addresses, actions):
                             by starting a new connection with a file transfer or command request
                             """
 
-                            if requires[action_num]:
+                            if requires[action_n]:
                                 """If file needs to be sent for current action"""
                                 if message.jsonheader["content_type"] == "text/json":
                                     """if its a query response coming back, start file transfer for action"""
@@ -174,9 +171,9 @@ def event_loop(addresses, actions):
                                     address = minCost["address"]
                                     cost = minCost["cost"]
                                     host, port = address
-                                    file = requires[action_num].pop(0)
+                                    file = requires[action_n].pop(0)
                                     logger.info(
-                                        f"Starting action: {action_num} with lowest cost of {cost} to address {address}"
+                                        f"Starting action: {action_n} with lowest cost of {cost} to address {address}"
                                     )
                                     monitor_socket = send_file(
                                         filename=file,
@@ -185,25 +182,25 @@ def event_loop(addresses, actions):
                                         socket=None,
                                     )
                                     # began the action, mark back false
-                                    ready_to_begin[action_num] = False
+                                    ready_to_begin[action_n] = False
                                     # keep track of which action to whick socket
-                                    alive_connections[action_num] = monitor_socket
+                                    alive_connections[action_n] = monitor_socket
                                     queries = []
                                 elif (
-                                    alive_connections[action_num] > 0
+                                    alive_connections[action_n] > 0
                                     and message.jsonheader["content_type"] == "binary"
                                 ):
                                     """
                                     if its a binary response, from an existing connection, previous file was sent succesfully
                                     send next file, update the message
                                     """
-                                    file = requires[action_num].pop(0)
+                                    file = requires[action_n].pop(0)
                                     reuse_connection(message, filename=file)
                             else:
                                 """no files to send or all files have beeen sent so send the command now"""
                                 if message.jsonheader["content_type"] == "binary":
                                     """returning connection from sending a file"""
-                                    new_action = check_remote(actions[action_num])
+                                    new_action = check_remote(actions[action_n])
 
                                     reuse_connection(
                                         message,
@@ -212,8 +209,8 @@ def event_loop(addresses, actions):
                                     )
 
                                     # reset the buffers
-                                    ready_to_begin[action_num] = False
-                                    alive_connections[action_num] = -1
+                                    ready_to_begin[action_n] = False
+                                    alive_connections[action_n] = -1
                                 elif message.jsonheader["content_type"] == "text/json":
                                     """else no files to send, first request so just send the command, returning message is from a query"""
                                     minCost = min(queries, key=lambda x: x["cost"])
@@ -221,9 +218,9 @@ def event_loop(addresses, actions):
                                     cost = minCost["cost"]
                                     host, port = address
                                     logger.info(
-                                        f"Starting action: {action_num} with lowest cost of {cost} to address {address}"
+                                        f"Starting action: {action_n} with lowest cost of {cost} to address {address}"
                                     )
-                                    new_action = check_remote(actions[action_num])
+                                    new_action = check_remote(actions[action_n])
 
                                     command_request = create_request(
                                         "command",
@@ -233,7 +230,7 @@ def event_loop(addresses, actions):
 
                                     start_connection(sel, host, port, command_request)
                                     # reset buffers
-                                    ready_to_begin[action_num] = False
+                                    ready_to_begin[action_n] = False
                                     queries = []
                 except ConnectionRefusedError as e:
                     logger.debug(f"{socket_no}")
@@ -244,7 +241,7 @@ def event_loop(addresses, actions):
                     message.close()
                 except SubprocessFailedError as e:
                     logger.critical(
-                        f"Subprocess failed: {e} on request:{message.request['content']['command']} for action: {action_num}"
+                        f"Subprocess failed: {e} on request:{message.request['content']['command']} for action: {action_n}"
                     )
                     logger.critical(f"Stopping client")
                     exit(1)
@@ -284,13 +281,13 @@ def main():
     Raises:
         RuntimeError: _description_
     """
-    addresses, action_sets = parse_file(sys.argv[1])
+    addresses, action_sets, port = parse_file(sys.argv[1])
     try:
         for index, action_set in enumerate(action_sets):
             logger.info(f"Starting actionset: {index}")
             actions = action_set[1:]
             try:
-                event_loop(addresses, actions)
+                event_loop(addresses, actions, port)
                 logger.info(f"Actionset {index} completed successfully")
             except RuntimeError as e:
                 logger.exception(e)
