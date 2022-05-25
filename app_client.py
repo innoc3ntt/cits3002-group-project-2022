@@ -26,6 +26,7 @@ in an action set, for each action, run a query to all hosts
 collect the returned costs, send a request to remote host,
 which may involve sending a file for each action and receiving back a file from each host
 """
+os.chdir("fakerakes")
 
 
 def event_loop(addresses, actions, port):
@@ -255,7 +256,7 @@ def event_loop(addresses, actions, port):
             if not sel.get_map():
                 break
     except KeyboardInterrupt:
-        logger.error("Caught keyboard interrupt, exiting")
+        raise KeyboardInterrupt()
     finally:
         sel.close()
 
@@ -291,12 +292,12 @@ def main():
                 logger.info(f"Actionset {index} completed successfully")
             except RuntimeError as e:
                 logger.exception(e)
-            except KeyboardInterrupt:
-                break
-
+                raise RuntimeError(e)
+            except KeyboardInterrupt as e:
+                raise KeyboardInterrupt()
         logger.info("All actionsets completed successfully!")
-    except Exception as e:
-        pass
+    except KeyboardInterrupt as e:
+        logger.error("Caught keyboard interrupt, exiting")
 
 
 if __name__ == "__main__":
