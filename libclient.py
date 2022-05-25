@@ -1,7 +1,5 @@
-import sys, selectors, struct, socket, os, logging
+import sys, selectors, struct, socket, logging
 
-
-import dotsi
 
 import libclient
 from liball import MessageAll
@@ -96,19 +94,19 @@ def create_request(
         (dict) A dictionary representing the request object
     """
     if request == "query":
-        return dotsi.Dict(
+        return dict(
             type="text/json",
             encoding="utf-8",
             content=dict(request=request),
         )
     elif request == "command":
-        return dotsi.Dict(
+        return dict(
             type="command",
             encoding="utf-8",
             content=dict(request=request, command=command),
         )
     elif request == "file":
-        return dotsi.Dict(
+        return dict(
             type="binary",
             encoding="binary",
             content=data,
@@ -152,16 +150,17 @@ class Message(MessageAll):
         self._request_queued = False
 
     def _write(self):
-        request = self.request.type
+        request = self.request["type"]
         if self._send_buffer:
             if request == "binary":
-                logger.info(f"<<< Sending {self.request.filename} to {self.addr}")
+                filename = self.request["filename"]
+                logger.info(f"<<< Sending {filename} to {self.addr}")
             elif request == "command":
-                logger.info(
-                    f"<<< Sending {self.request.content.command} command to {self.addr}"
-                )
+                command = self.request["content"]["command"]
+                logger.info(f"<<< Sending {command} command to {self.addr}")
             else:
-                logger.info(f"<<< Sending {self.request.content} to {self.addr}")
+                content = self.request["content"]
+                logger.info(f"<<< Sending {content} to {self.addr}")
             try:
                 # Should be ready to write
                 sent = self.sock.send(self._send_buffer)
@@ -172,7 +171,7 @@ class Message(MessageAll):
                 self._send_buffer = self._send_buffer[sent:]
 
     def _create_message(self, header, content_bytes):
-        jsonheader = dotsi.Dict(
+        jsonheader = dict(
             {
                 "byteorder": sys.byteorder,
                 "content_length": len(content_bytes),
@@ -186,11 +185,11 @@ class Message(MessageAll):
 
     def _process_response_command(self):
         # compile file sent by server!
-        exit_status = self.jsonheader.exit_status
+        exit_status = self.jsonheader["exit_status"]
 
         if exit_status == 0:
             logger.info(f">>> Subprocess exited succesfully")
-            filename = self.jsonheader.filename
+            filename = self.jsonheader["filename"]
             logger.info(f">>> Received file: {filename} from {self.addr}")
             with open(filename, "wb") as f:
                 f.write(self.response)
@@ -237,11 +236,11 @@ class Message(MessageAll):
         self.selector.modify(self.sock, events=events, data=self)
 
     def queue_request(self):
-        content = self.request.content
-        content_type = self.request.type
-        content_encoding = self.request.encoding
+        content = self.request["content"]
+        content_type = self.request["type"]
+        content_encoding = self.request["encoding"]
 
-        header = dotsi.Dict()
+        header = dict()
 
         if content_type == "text/json":
             content_bytes = self._json_encode(content, content_encoding)
@@ -261,43 +260,42 @@ class Message(MessageAll):
             )
         else:
             content_bytes = content
-            filename = self.request.filename
             header.update(
                 {
                     "content_type": content_type,
                     "content_encoding": content_encoding,
-                    "filename": filename,
+                    "filename": self.request["filename"],
                 }
             )
 
         if "keep_connection_alive" in self.request.keys():
-            header.update({"keep_connection_alive": self.request.keep_connection_alive})
+            header.update(
+                {"keep_connection_alive": self.request["keep_connection_alive"]}
+            )
 
         message = self._create_message(header, content_bytes)
         self._send_buffer += message
         self._request_queued = True
 
     def process_response(self):
-        self.jsonheader = dotsi.fy(self.jsonheader)
-
-        content_len = self.jsonheader.content_length
+        content_len = self.jsonheader["content_length"]
         if not len(self._recv_buffer) >= content_len:
             return
 
         data = self._recv_buffer[:content_len]
         self._recv_buffer = self._recv_buffer[content_len:]
 
-        if self.jsonheader.content_type == "text/json":
+        if self.jsonheader["content_type"] == "text/json":
             # if json content
-            encoding = self.jsonheader.content_encoding
+            encoding = self.jsonheader["content_encoding"]
             self.response = self._json_decode(data, encoding)
             logger.info(f">>> Received response {self.response!r} from {self.addr}")
             self.close()
 
-        elif self.jsonheader.content_type == "command":
+        elif self.jsonheader["content_type"] == "command":
             self.response = data
             logger.info(
-                f">>> Received {self.jsonheader.content_type} "
+                f">>> Received {self.jsonheader['content_type']} "
                 f"response from {self.addr}"
             )
             self._process_response_command()
@@ -306,7 +304,7 @@ class Message(MessageAll):
             # Binary or unknown content_type
             self.response = data
             logger.info(
-                f">>> Received {self.jsonheader.content_type} | {self.response} response from {self.addr}"
+                f">>> Received {self.jsonheader['content_type']} | {self.response} response from {self.addr}"
             )
 
     def close(self):

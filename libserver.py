@@ -1,15 +1,21 @@
 import os, subprocess, sys, struct, time, random, tempfile, shutil, logging
 
-import dotsi, colorama
 
 from liball import MessageAll
 
 logger = logging.getLogger("server")
 random.seed(time.time())
-colorama.init(autoreset=True)
 
 
 def get_latest_file(directory):
+    """Find the latest file in the directory
+
+    Args:
+        directory (string): filename or path
+
+    Returns:
+        str: filename
+    """
     file_list = [
         os.path.join(directory, f)
         for f in os.listdir(directory)
@@ -17,10 +23,8 @@ def get_latest_file(directory):
     ]
 
     file = max(file_list, key=os.path.getctime)
-
     base_file = os.path.basename(file)
     logging.debug(f"Latest file is: {base_file}")
-
     return file
 
 
@@ -52,7 +56,7 @@ class Message(MessageAll):
                 # Close when the buffer is drained. The response has been sent.
                 if (
                     "keep_connection_alive" in self.jsonheader.keys()
-                    and self.jsonheader.keep_connection_alive > 0
+                    and self.jsonheader["keep_connection_alive"] > 0
                 ):
                     self.reset()
                     logger.info(f"<<< Keep connection alive for ${self.addr} >>>")
@@ -61,12 +65,11 @@ class Message(MessageAll):
                     self.close()
 
     def _create_message(self, header, content_bytes):
-        jsonheader = dotsi.Dict(
-            {
-                "byteorder": sys.byteorder,
-                "content_length": len(content_bytes),
-            }
-        )
+        jsonheader = {
+            "byteorder": sys.byteorder,
+            "content_length": len(content_bytes),
+        }
+
         jsonheader.update(header)
         jsonheader_bytes = self._json_encode(jsonheader, "utf-8")
         message_hdr = struct.pack(">H", len(jsonheader_bytes))
@@ -74,11 +77,9 @@ class Message(MessageAll):
         return message
 
     def _create_response_json_content(self):
-        self.request = dotsi.fy(self.request)
-        request = self.request.request
+        request = self.request["request"]
 
         if request == "query":
-            time.sleep(random.randint(0, 5))
             content = {"cost": random.randint(0, 100)}
             logger.info(f">>> Responding to query with: {content}")
         else:
@@ -87,8 +88,7 @@ class Message(MessageAll):
         return content
 
     def _create_response_command(self):
-        self.request = dotsi.fy(self.request)
-        command = self.request.command
+        command = self.request["command"]
         data = b""
         logging.debug(f"Command is ${command}")
 
@@ -103,35 +103,32 @@ class Message(MessageAll):
                 command, check=True, capture_output=True, cwd=directory
             )
 
-            output = dotsi.Dict(
-                {
-                    "output": process.stdout.decode("utf-8"),
-                    "exit_status": process.returncode,
-                }
-            )
+            response = {
+                "output": process.stdout.decode("utf-8"),
+                "exit_status": process.returncode,
+            }
 
             if process.returncode == 0:
                 # get compiled file which is presumably the newest file
                 latest_file = get_latest_file(directory)
                 filename = os.path.basename(latest_file)
-                output.update({"filename": filename})
+                response.update({"filename": filename})
                 # send back the compiled file
                 with open(latest_file, "rb") as f:
                     data = f.read()
 
         except subprocess.CalledProcessError as e:
-            output = dotsi.Dict(
-                {"output": e.stderr.decode("utf-8"), "exit_status": e.returncode}
-            )
-
-        logging.debug(f"Output: {output.output}, exit_status: {output.exit_status}")
+            response = {"output": e.stderr.decode("utf-8"), "exit_status": e.returncode}
+        logging.debug(
+            f"Output: {response['output']}, exit_status: {response['exit_status']}"
+        )
 
         if self.directory is not None and "tmp" in self.directory:
             # cleanup tmp dir
             logger.info(f"=== Removing ${self.directory} ===")
             shutil.rmtree(self.directory)
 
-        return (data, output)
+        return (data, response)
 
     def read(self):
         self._read()
@@ -155,9 +152,7 @@ class Message(MessageAll):
         self._write()
 
     def process_request(self):
-        self.jsonheader = dotsi.fy(self.jsonheader)
-
-        content_len = self.jsonheader.content_length
+        content_len = self.jsonheader["content_length"]
         if not len(self._recv_buffer) >= content_len:
             return
 
@@ -165,19 +160,19 @@ class Message(MessageAll):
         data = self._recv_buffer[:content_len]
         self._recv_buffer = self._recv_buffer[content_len:]
 
-        if self.jsonheader.content_type == "text/json":
+        if self.jsonheader["content_type"] == "text/json":
             # if json content
-            encoding = self.jsonheader.content_encoding
+            encoding = self.jsonheader["content_encoding"]
             self.request = self._json_decode(data, encoding)
             logger.info(f">>> Received request {self.request!r} from {self.addr}")
 
-        elif self.jsonheader.content_type == "binary":
+        elif self.jsonheader["content_type"] == "binary":
             # File recieved
             self.request = data
-            filename = self.jsonheader.filename
+            filename = self.jsonheader["filename"]
 
             logger.info(
-                f">>> Received {self.jsonheader.content_type} "
+                f">>> Received {self.jsonheader['content_type']} "
                 f"request from {self.addr}"
             )
 
@@ -192,9 +187,9 @@ class Message(MessageAll):
 
             logger.info(f"=== File:{filename} written to ${fullpath} ===")
 
-        elif self.jsonheader.content_type == "command":
+        elif self.jsonheader["content_type"] == "command":
             # if a command is given
-            encoding = self.jsonheader.content_encoding
+            encoding = self.jsonheader["content_encoding"]
             self.request = self._json_decode(data, encoding)
             logger.info(f">>> Received command request from {self.addr}")
 
@@ -202,34 +197,28 @@ class Message(MessageAll):
         self._set_selector_events_mask("w")
 
     def create_response(self):
-        if self.jsonheader.content_type == "text/json":
+        if self.jsonheader["content_type"] == "text/json":
             response = self._create_response_json_content()
             content_bytes = self._json_encode(response, "utf-8")
-            header = dotsi.Dict(
-                {
-                    "content_type": "text/json",
-                    "content_encoding": "utf-8",
-                }
-            )
-        elif self.jsonheader.content_type == "binary":
+            header = {
+                "content_type": "text/json",
+                "content_encoding": "utf-8",
+            }
+
+        elif self.jsonheader["content_type"] == "binary":
             # Binary or unknown content_type
             content_bytes = b"First 10 bytes of request: " + self.request[:10]
-            header = dotsi.Dict(
-                {
-                    "content_type": "binary",
-                    "content_encoding": "binary",
-                }
-            )
-        elif self.jsonheader.content_type == "command":
+            header = {
+                "content_type": "binary",
+                "content_encoding": "binary",
+            }
+        elif self.jsonheader["content_type"] == "command":
             # if a cc command is given
-            # TODO: Do something with output, the subprocess return code
             content_bytes, output = self._create_response_command()
-            header = dotsi.Dict(
-                {
-                    "content_type": "command",
-                    "content_encoding": "binary",
-                }
-            )
+            header = {
+                "content_type": "command",
+                "content_encoding": "binary",
+            }
             header.update(output)
         else:
             # TODO: generic command passed in

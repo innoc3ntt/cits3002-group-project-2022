@@ -1,6 +1,4 @@
-import logging, traceback, selectors, yaml, logging.config, time, sys, os
-
-import dotsi
+import logging, traceback, selectors, yaml, logging.config, sys, os
 
 
 from parser import parse_file
@@ -107,14 +105,17 @@ def event_loop(addresses, actions):
             events = sel.select(timeout=1)
 
             for key, mask in events:
-                time.sleep(1)
+                # time.sleep(1)
                 message = key.data
                 try:
                     socket_no = key.fd
                     message.process_events(mask)
 
                     if message.response:
-                        if message.jsonheader.content_type == "text/json":
+                        if (
+                            message.jsonheader["content_type"] == "text/json"
+                            and message.request["content"]["request"] == "query"
+                        ):
                             # Process the server response to query request, if there is a response and type is query
                             # If there is a socket being awaited on, remove it from queue and store result
                             queue.remove(socket_no)
@@ -124,6 +125,9 @@ def event_loop(addresses, actions):
                                     "cost": message.response["cost"],
                                 }
                             )
+
+                            logger.debug(f"queries: {queries}")
+                            logger.debug(f"queue: {queue}")
                             if not queue:
                                 # if after dequeing, all queries have returned, ready to send action and query for next action
                                 ready_to_begin[action_number_sent] = True
@@ -132,15 +136,16 @@ def event_loop(addresses, actions):
                                     # while there are actions
                                     _remote_start(next(my_iter), action_number_sent)
                                 except StopIteration:
+                                    # no more actions to perform
                                     pass
 
-                        """For returned connections"""
+                        """For returned connections, second stage"""
                         if socket_no in alive_connections:
                             """If it is for an existing connection, check which action it is for"""
                             action_num = alive_connections.index(socket_no)
 
                         elif ready_to_begin.count(True) > 0:
-                            """Ready to begin a new action set"""
+                            """Ready to begin a new action set. find which action it is"""
                             action_num = ready_to_begin.index(True)
 
                         else:
@@ -148,7 +153,7 @@ def event_loop(addresses, actions):
                             Is not one of the above options,
                             - not an existing connection
                             - not a new action
-                            unrecognized
+                            unrecognized so mark as -1 to ignore
                             """
                             action_num = -1
 
@@ -157,18 +162,21 @@ def event_loop(addresses, actions):
                             if an existing connection or ready to start a new connection
 
                             determine the lowest bid for the action and send the relevant action
-                            by starting a new connection with different request
+                            by starting a new connection with a file transfer or command request
                             """
-                            minCost = dotsi.fy(min(queries, key=lambda x: x["cost"]))
-                            host, port = minCost.address
+
                             if requires[action_num]:
                                 """If file needs to be sent for current action"""
-                                if message.jsonheader.content_type == "text/json":
+                                if message.jsonheader["content_type"] == "text/json":
                                     """if its a query response coming back, start file transfer for action"""
 
+                                    minCost = min(queries, key=lambda x: x["cost"])
+                                    address = minCost["address"]
+                                    cost = minCost["cost"]
+                                    host, port = address
                                     file = requires[action_num].pop(0)
                                     logger.info(
-                                        f"Starting action: {action_num} with lowest cost of {minCost.cost} to address {minCost.address}"
+                                        f"Starting action: {action_num} with lowest cost of {cost} to address {address}"
                                     )
                                     monitor_socket = send_file(
                                         filename=file,
@@ -180,9 +188,10 @@ def event_loop(addresses, actions):
                                     ready_to_begin[action_num] = False
                                     # keep track of which action to whick socket
                                     alive_connections[action_num] = monitor_socket
+                                    queries = []
                                 elif (
                                     alive_connections[action_num] > 0
-                                    and message.jsonheader.content_type == "binary"
+                                    and message.jsonheader["content_type"] == "binary"
                                 ):
                                     """
                                     if its a binary response, from an existing connection, previous file was sent succesfully
@@ -192,7 +201,7 @@ def event_loop(addresses, actions):
                                     reuse_connection(message, filename=file)
                             else:
                                 """no files to send or all files have beeen sent so send the command now"""
-                                if message.jsonheader.content_type == "binary":
+                                if message.jsonheader["content_type"] == "binary":
                                     """returning connection from sending a file"""
                                     new_action = check_remote(actions[action_num])
 
@@ -205,8 +214,15 @@ def event_loop(addresses, actions):
                                     # reset the buffers
                                     ready_to_begin[action_num] = False
                                     alive_connections[action_num] = -1
-                                elif message.jsonheader.content_type == "text/json":
+                                elif message.jsonheader["content_type"] == "text/json":
                                     """else no files to send, first request so just send the command, returning message is from a query"""
+                                    minCost = min(queries, key=lambda x: x["cost"])
+                                    address = minCost["address"]
+                                    cost = minCost["cost"]
+                                    host, port = address
+                                    logger.info(
+                                        f"Starting action: {action_num} with lowest cost of {cost} to address {address}"
+                                    )
                                     new_action = check_remote(actions[action_num])
 
                                     command_request = create_request(
@@ -216,7 +232,9 @@ def event_loop(addresses, actions):
                                     )
 
                                     start_connection(sel, host, port, command_request)
+                                    # reset buffers
                                     ready_to_begin[action_num] = False
+                                    queries = []
                 except ConnectionRefusedError as e:
                     logger.debug(f"{socket_no}")
                     logger.debug(f"{queue}")
@@ -226,7 +244,7 @@ def event_loop(addresses, actions):
                     message.close()
                 except SubprocessFailedError as e:
                     logger.critical(
-                        f"Subprocess failed: {e} on request:{message.request.content.command} for action: {action_num}"
+                        f"Subprocess failed: {e} on request:{message.request['content']['command']} for action: {action_num}"
                     )
                     logger.critical(f"Stopping client")
                     exit(1)
@@ -246,25 +264,42 @@ def event_loop(addresses, actions):
 
 
 def check_remote(action):
+    """Check if an action is remote by parsing the first argument
+
+    Args:
+        action list(str): a list of the words of the actions
+
+    Returns:
+        list(str): the action with remote split if it is present
+    """
     if "remote" in action[0]:
         action[0] = action[0].split("-")[1]
     return action
 
 
 def main():
+    """
+    Parse a rakefile and then run an event loop for each action set
 
+    Raises:
+        RuntimeError: _description_
+    """
     addresses, action_sets = parse_file(sys.argv[1])
+    try:
+        for index, action_set in enumerate(action_sets):
+            logger.info(f"Starting actionset: {index}")
+            actions = action_set[1:]
+            try:
+                event_loop(addresses, actions)
+                logger.info(f"Actionset {index} completed successfully")
+            except RuntimeError as e:
+                logger.exception(e)
+            except KeyboardInterrupt:
+                break
 
-    for index, action_set in enumerate(action_sets):
-        logger.info(f"Starting actionset: {index}")
-        actions = action_set[1:]
-        try:
-            event_loop(addresses, actions)
-            logger.info(f"Actionset {index} completed successfully")
-        except RuntimeError as e:
-            logger.exception(e)
-
-    logger.info("All actionsets completed successfully!")
+        logger.info("All actionsets completed successfully!")
+    except Exception as e:
+        pass
 
 
 if __name__ == "__main__":
