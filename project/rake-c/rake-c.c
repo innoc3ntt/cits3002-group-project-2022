@@ -52,6 +52,7 @@ int main(int argc, char const *argv[])
             ACTIONS[i] = malloc(sizeof(ActionSet)*3);
     }
     fillACTIONS(ACTIONS, file);
+    //prints out everything in the ACTIONS datastructure
     actionsSummary(ACTIONS, action_counts);
 
     //a working client would look somehting like this (pseudo code)
