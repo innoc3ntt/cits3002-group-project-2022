@@ -33,15 +33,16 @@ collect the returned costs, send a request to remote host,
 which may involve sending a file for each action and receiving back a file from each host
 """
 
-os.chdir("./fakerakes")
 
 
-def event_loop(addresses, actions):
+def event_loop(addresses, actions, port):
     """
     Run for each action in an actionset to query all the connected servers.
     will return the minimum bid server and it's ip address
     """
     sel = selectors.DefaultSelector()
+    local_port = port
+
 
     # buffers to hold connection data per action
     queue = []
@@ -72,7 +73,7 @@ def event_loop(addresses, actions):
         if "remote" in action_step[0]:
             _query()
         else:
-            host, port = "localhost", LOCAL_PORT
+            host, port = "localhost", local_port
             logger.info(f"=== Sending a request to localhost for {action_n} ===")
 
             if requires[action_n]:
