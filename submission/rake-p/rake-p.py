@@ -18,7 +18,7 @@ with open("logger.yaml", "rt") as f:
 logging.config.dictConfig(logging_config)
 logger = logging.getLogger("client")
 
-
+os.chdir("fakerakes")
 logger.info("================= STARTING LOG ========================")
 
 """
