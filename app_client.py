@@ -113,7 +113,7 @@ def event_loop(addresses, actions):
 
                     if message.response:
                         if (
-                            message.jsonheader.content_type == "text/json"
+                            message.jsonheader["content_type"] == "text/json"
                             and message.request["content"]["request"] == "query"
                         ):
                             # Process the server response to query request, if there is a response and type is query
@@ -167,7 +167,7 @@ def event_loop(addresses, actions):
 
                             if requires[action_num]:
                                 """If file needs to be sent for current action"""
-                                if message.jsonheader.content_type == "text/json":
+                                if message.jsonheader["content_type"] == "text/json":
                                     """if its a query response coming back, start file transfer for action"""
 
                                     minCost = min(queries, key=lambda x: x["cost"])
@@ -191,7 +191,7 @@ def event_loop(addresses, actions):
                                     queries = []
                                 elif (
                                     alive_connections[action_num] > 0
-                                    and message.jsonheader.content_type == "binary"
+                                    and message.jsonheader["content_type"] == "binary"
                                 ):
                                     """
                                     if its a binary response, from an existing connection, previous file was sent succesfully
@@ -201,7 +201,7 @@ def event_loop(addresses, actions):
                                     reuse_connection(message, filename=file)
                             else:
                                 """no files to send or all files have beeen sent so send the command now"""
-                                if message.jsonheader.content_type == "binary":
+                                if message.jsonheader["content_type"] == "binary":
                                     """returning connection from sending a file"""
                                     new_action = check_remote(actions[action_num])
 
@@ -214,7 +214,7 @@ def event_loop(addresses, actions):
                                     # reset the buffers
                                     ready_to_begin[action_num] = False
                                     alive_connections[action_num] = -1
-                                elif message.jsonheader.content_type == "text/json":
+                                elif message.jsonheader["content_type"] == "text/json":
                                     """else no files to send, first request so just send the command, returning message is from a query"""
                                     minCost = min(queries, key=lambda x: x["cost"])
                                     address = minCost["address"]
@@ -244,7 +244,7 @@ def event_loop(addresses, actions):
                     message.close()
                 except SubprocessFailedError as e:
                     logger.critical(
-                        f"Subprocess failed: {e} on request:{message.request.content.command} for action: {action_num}"
+                        f"Subprocess failed: {e} on request:{message.request['content']['command']} for action: {action_num}"
                     )
                     logger.critical(f"Stopping client")
                     exit(1)

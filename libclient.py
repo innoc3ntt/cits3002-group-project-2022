@@ -1,8 +1,6 @@
 import sys, selectors, struct, socket, logging
 
 
-import dotsi
-
 import libclient
 from liball import MessageAll
 
@@ -242,7 +240,7 @@ class Message(MessageAll):
         content_type = self.request["type"]
         content_encoding = self.request["encoding"]
 
-        header = dotsi.Dict()
+        header = dict()
 
         if content_type == "text/json":
             content_bytes = self._json_encode(content, content_encoding)
@@ -280,26 +278,24 @@ class Message(MessageAll):
         self._request_queued = True
 
     def process_response(self):
-        self.jsonheader = dotsi.fy(self.jsonheader)
-
-        content_len = self.jsonheader.content_length
+        content_len = self.jsonheader["content_length"]
         if not len(self._recv_buffer) >= content_len:
             return
 
         data = self._recv_buffer[:content_len]
         self._recv_buffer = self._recv_buffer[content_len:]
 
-        if self.jsonheader.content_type == "text/json":
+        if self.jsonheader["content_type"] == "text/json":
             # if json content
-            encoding = self.jsonheader.content_encoding
+            encoding = self.jsonheader["content_encoding"]
             self.response = self._json_decode(data, encoding)
             logger.info(f">>> Received response {self.response!r} from {self.addr}")
             self.close()
 
-        elif self.jsonheader.content_type == "command":
+        elif self.jsonheader["content_type"] == "command":
             self.response = data
             logger.info(
-                f">>> Received {self.jsonheader.content_type} "
+                f">>> Received {self.jsonheader['content_type']} "
                 f"response from {self.addr}"
             )
             self._process_response_command()
@@ -308,7 +304,7 @@ class Message(MessageAll):
             # Binary or unknown content_type
             self.response = data
             logger.info(
-                f">>> Received {self.jsonheader.content_type} | {self.response} response from {self.addr}"
+                f">>> Received {self.jsonheader['content_type']} | {self.response} response from {self.addr}"
             )
 
     def close(self):
