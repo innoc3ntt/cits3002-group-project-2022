@@ -254,7 +254,6 @@ def check_remote(action):
 def main():
 
     addresses, action_sets = parse_file(sys.argv[1])
-
     for index, action_set in enumerate(action_sets):
         logger.info(f"Starting actionset: {index}")
         actions = action_set[1:]

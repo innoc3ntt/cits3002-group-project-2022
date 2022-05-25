@@ -152,16 +152,20 @@ void actionsSummary(ActionSet *ACTIONS[],  int action_counts[]){
         printf("actionset: %i has %i actions\n", i ,action_counts[i]);
     }
     printf("\n");
-    //TRYING TO LOOP THROUGH ACTIONS, final stage
+    //Looping through ACTIONS
     for(int i = 0; i < action_set_count; i++){
+        //getting an actionset
         ActionSet *c = ACTIONS[i];
         printf("Action set %i\n",i);
+        //iterating through every item in that actionset
         for(int z = 0; z<action_counts[i];z++){
             action b =  c[z];
             printf("\t");
+            //printing the words of the commands
             for(int w = 0; w<b->nwords_command; w++){
                 printf("%s ", b->command[w]);
             }
+            //printing the words of teh requirements, if the action has any
             if(b->requires == true){
                 for(int w = 0; w < b->nwords_requirement; w++){
                     printf("%s ", b->requirements[w]);

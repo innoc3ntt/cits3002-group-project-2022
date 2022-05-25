@@ -45,6 +45,8 @@ def start_connection(sel, host, port, request):
     logger.info(f"<<< Starting connection to {addr} on {sock.fileno()}")
     events = selectors.EVENT_READ | selectors.EVENT_WRITE
     message = libclient.Message(sel, sock, addr, request)
+    # come back here
+    # print(message)
     sel.register(sock, events, data=message)
 
     return sock.fileno()
@@ -68,6 +70,7 @@ def reuse_connection(message, filename=None, command=None, keep_connection_alive
 def send_query(sel, host, port):
     """Wrapper around start_connection to be called for each action to each host"""
     query = create_request("query")
+    print(query)
     return start_connection(sel, host, port, query)
 
 
