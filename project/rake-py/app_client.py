@@ -15,8 +15,6 @@ from libclient import (
     send_file,
 )
 
-LOCAL_PORT = 8000
-
 logging.basicConfig(filename="logs/clients.log", filemode="w", level=logging.DEBUG)
 with open("logger.yaml", "rt") as f:
     logging_config = yaml.safe_load(f.read())
