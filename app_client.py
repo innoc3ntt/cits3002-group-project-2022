@@ -26,7 +26,6 @@ in an action set, for each action, run a query to all hosts
 collect the returned costs, send a request to remote host,
 which may involve sending a file for each action and receiving back a file from each host
 """
-os.chdir("fakerakes")
 
 
 def event_loop(addresses, actions, port):
